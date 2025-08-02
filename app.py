@@ -34,9 +34,6 @@ df = pd.DataFrame({
     "গ্রহণের পরিমাণ (D)": np.nan,
     "বাকিতে নেওয়া (E)": np.nan,
     "G (চাল ব্যবহার)": np.nan,
-    "I (Mon/Thu)": np.nan,
-    "J (Tue/Fri)": np.nan,
-    "K (Wed/Sat)": np.nan,
 })
 
 # 2) Configure AgGrid
@@ -67,11 +64,8 @@ gb.configure_column(
     headerClass="header-green",
     cellStyle={"backgroundColor": "#e8f5e9"}
 )
-# G, I, J, K columns – read-only with pastel backgrounds
+# G column – read-only with pastel background
 gb.configure_column("G (চাল ব্যবহার)", editable=False, width=130, cellStyle={"backgroundColor": "#fff9c4"})
-gb.configure_column("I (Mon/Thu)", editable=False, width=130, cellStyle={"backgroundColor": "#ffe0b2"})
-gb.configure_column("J (Tue/Fri)", editable=False, width=130, cellStyle={"backgroundColor": "#f3e5f5"})
-gb.configure_column("K (Wed/Sat)", editable=False, width=130, cellStyle={"backgroundColor": "#fce4ec"})
 
 grid_opts = gb.build()
 
@@ -97,7 +91,7 @@ initial_G = st.number_input(
 )
 
 # 5) Compute button
-if st.button("Compute All G, I, J, K"):
+if st.button("Compute All G"):
     df2 = edited_df.copy()
     # Reset Date and Day to ensure fixed sequence
     df2["Date"] = dates
@@ -117,11 +111,15 @@ if st.button("Compute All G, I, J, K"):
         G.append(prev - F_i + E_prev)
     df2["G (চাল ব্যবহার)"] = G
 
-    # Compute weekly sums for D
-    Dcol = df2["গ্রহণের পরিমাণ (D)"]
-    df2["I (Mon/Thu)"] = [Dcol[i::7].sum() for i in df2.index]
-    df2["J (Tue/Fri)"] = [Dcol[i+1::7].sum() for i in df2.index]
-    df2["K (Wed/Sat)"] = [Dcol[i+2::7].sum() for i in df2.index]
+    # Show totals for Mon/Thu, Tue/Fri, Wed/Sat from D
+    total_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "গ্রহণের পরিমাণ (D)"].sum()
+    total_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]), "গ্রহণের পরিমাণ (D)"].sum()
+    total_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "গ্রহণের পরিমাণ (D)"].sum()
+
+    st.markdown("### Weekly Totals from গ্রহণের পরিমাণ (D):")
+    st.write(f"**Mon/Thu (I)**: {total_I:.2f}")
+    st.write(f"**Tue/Fri (J)**: {total_J:.2f}")
+    st.write(f"**Wed/Sat (K)**: {total_K:.2f}")
 
     # 6) Show results in a second grid
     st.markdown("### Results Table:")
