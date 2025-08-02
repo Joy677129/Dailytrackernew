@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
+from calendar import monthrange
+import datetime
 
 # Page configuration
 theme = 'alpine'
@@ -23,13 +25,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Month and year selection
+col1, col2 = st.columns(2)
+with col1:
+    month = st.selectbox("Select Month:", list(range(1, 13)), format_func=lambda x: datetime.date(2023, x, 1).strftime('%B'), index=7)  # August is index 7
+with col2:
+    year = st.selectbox("Select Year:", list(range(2020, 2031)), index=5)  # 2025 is index 5
+
+# Get number of days in selected month
+num_days = monthrange(year, month)[1]
+
 # Weekday selection
 weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 first_day = st.selectbox("Weekday of 1st of month:", weekdays, index=0)
 offset = weekdays.index(first_day)
 
-# Build template
-dates = list(range(1,32))
+# Build template with correct number of days
+dates = list(range(1, num_days + 1))
 days = [weekdays[(offset + d - 1) % 7] for d in dates]
 
 df = pd.DataFrame({
@@ -95,16 +107,14 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Calculate F column (চাল প্রাপ্তি) - 12% of D
     df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
     
-    # Calculate G column (চাল ব্যবহার) using Excel logic
+    # Calculate G column (চাল ব্যবহার) using corrected logic
     g_vals = []
     
-    # For first day: G = Initial_G - F_current
-    # There's no E_previous before first day
-    first_g = initial_g - df2.iloc[0]['চাল প্রাপ্তি (F)'] 
+    # For first day: G = Initial_G - F_current (no previous E)
+    first_g = initial_g - df2.iloc[0]['চাল প্রাপ্তি (F)']
     g_vals.append(first_g)
     
     # For subsequent days: G_current = G_previous - F_current + E_previous
-    # CORRECTED: Using current day's F value, not previous day's
     for i in range(1, len(df2)):
         prev_g = g_vals[i-1]
         current_f = df2.iloc[i]['চাল প্রাপ্তি (F)']  # Current day's F
@@ -218,7 +228,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     st.download_button(
         label="Download as CSV",
         data=csv,
-        file_name='rice_flow_report.csv',
+        file_name=f'rice_flow_report_{month}_{year}.csv',
         mime='text/csv'
     )
 
@@ -226,18 +236,19 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
 with st.sidebar:
     st.header("Instructions")
     st.markdown("""
-    1. Select the **first weekday** of the month
-    2. Enter values in:
+    1. Select the **month and year**
+    2. Select the **first weekday** of the month
+    3. Enter values in:
        - **D (গ্রহণের পরিমাণ)**: Rice received
        - **E (বাকিতে নেওয়া)**: Rice taken on credit
-    3. Set the **Initial G** (balance before 1st day)
-    4. Click **Calculate Rice Flow**
+    4. Set the **Initial G** (balance before 1st day)
+    5. Click **Calculate Rice Flow**
     
     ### Calculation Formula
     - **F (চাল প্রাপ্তি)** = D × Rate
     - **G (চাল ব্যবহার)**:
       - Day 1: Initial_G - F₁
-      - Day n: Gₙ₋₁ - Fₙ + Eₙ₋₁
+      - Day n: Gₙ = Gₙ₋₁ - Fₙ + Eₙ₋₁
     
     ### Key Relationships
     - E values affect the NEXT day's G calculation
@@ -253,7 +264,8 @@ with st.sidebar:
     st.info("""
     **Note**: 
     - Negative G values are shown in red indicating deficit
-    - 'Initial G' is the balance before the 1st day (like Excel's G2)
+    - 'Initial G' is the balance before the 1st day
     - E values from a day affect the next day's calculation
-    - Weekly totals show sum of D values for each group
+    - The last day's E value is not used (no next day)
+    - Sunday is not included in any weekly group
     """)
