@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
+from calendar import monthrange
+import datetime
 
 # Page configuration
 theme = 'alpine'
@@ -16,7 +18,6 @@ st.markdown("""
   .header-green .ag-header-cell-label { background-color: #43a047 !important; color: white; }
   .header-day .ag-header-cell-label { background-color: #6a1b9a !important; color: white; }
   .header-red .ag-header-cell-label { background-color: #d32f2f !important; color: white; }
-  .header-orange .ag-header-cell-label { background-color: #ff8f00 !important; color: white; }
   .negative { color: red !important; font-weight: bold; }
   .total-row { background-color: #bbdefb !important; font-weight: bold; }
   .ag-theme-alpine .ag-row-even { background-color: #f9f9f9; }
@@ -24,13 +25,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Month and year selection
+col1, col2 = st.columns(2)
+with col1:
+    month = st.selectbox("Select Month:", list(range(1, 13)), format_func=lambda x: datetime.date(2023, x, 1).strftime('%B'), index=7)  # August is index 7
+with col2:
+    year = st.selectbox("Select Year:", list(range(2020, 2031)), index=5)  # 2025 is index 5
+
+# Get number of days in selected month
+num_days = monthrange(year, month)[1]
+
 # Weekday selection
 weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 first_day = st.selectbox("Weekday of 1st of month:", weekdays, index=0)
 offset = weekdays.index(first_day)
 
-# Build template
-dates = list(range(1,32))
+# Build template with correct number of days
+dates = list(range(1, num_days + 1))
 days = [weekdays[(offset + d - 1) % 7] for d in dates]
 
 df = pd.DataFrame({
@@ -42,15 +53,15 @@ df = pd.DataFrame({
     'G (চাল ব্যবহার)': 0.0
 })
 
-# Grid configuration - UPDATED FOR F COLUMN
+# Grid configuration
 gb = GridOptionsBuilder.from_dataframe(df)
 cols_cfg = [
     ('Date', False, 80, 'header-dark', '#f2f2f2', 'left'),
     ('Day', False, 100, 'header-day', '#ede7f6', 'left'),
     ('গ্রহণের পরিমাণ (D)', True, 140, 'header-blue', '#e0f7fa', None),
     ('বাকিতে নেওয়া (E)', True, 140, 'header-green', '#e8f5e9', None),
-    ('চাল প্রাপ্তি (F)', False, 130, 'header-orange', '#fff3e0', None),  # Changed to orange for visibility
-    ('G (চাল ব্যবহার)', False, 130, 'header-red', '#ffebee', None)
+    ('চাল প্রাপ্তি (F)', False, 150, 'header-dark', '#fffde7', None),  # Increased width for better visibility
+    ('G (চাল ব্যবহার)', False, 150, 'header-red', '#ffebee', None)    # Increased width for better visibility
 ]
 for col, editable, width, cls, bg, pin in cols_cfg:
     opts = {'editable': editable, 'width': width, 'headerClass': cls, 'cellStyle': {'backgroundColor': bg}}
@@ -96,11 +107,11 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Calculate F column (চাল প্রাপ্তি) - 12% of D
     df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
     
-    # Calculate G column (চাল ব্যবহার) using Excel logic
+    # Calculate G column (চাল ব্যবহার) using corrected logic
     g_vals = []
     
-    # For first day: G = Initial_G - F_current
-    first_g = initial_g - df2.iloc[0]['চাল প্রাপ্তি (F)'] 
+    # For first day: G = Initial_G - F_current (no previous E)
+    first_g = initial_g - df2.iloc[0]['চাল প্রাপ্তি (F)']
     g_vals.append(first_g)
     
     # For subsequent days: G_current = G_previous - F_current + E_previous
@@ -146,6 +157,9 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Combine with main data
     df2 = pd.concat([df2, summary_row], ignore_index=True)
     
+    # Ensure F column is properly formatted with 2 decimal places
+    df2['চাল প্রাপ্তি (F)'] = df2['চাল প্রাপ্তি (F)'].apply(lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x)
+    
     # Display results table
     st.subheader("📊 Results Table")
     
@@ -179,23 +193,31 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         };
     """)
     
-    # Apply column configurations - CRITICAL FIX: Ensure all columns are properly configured
+    # Explicitly configure all columns with type information
     for col, _, width, cls, bg, pin in cols_cfg:
         opts = {
             'width': width, 
             'headerClass': cls, 
             'cellStyle': {'backgroundColor': bg},
-            'valueFormatter': {"function": f"params.value !== null ? (typeof params.value === 'number' ? params.value.toFixed(2) : params.value) : ''"}
+            'type': ['numericColumn', 'numberColumn']  # Explicitly set column type
         }
         if col == 'G (চাল ব্যবহার)':
             opts['cellStyle'] = cell_style_jscode
+            opts['valueFormatter'] = JsCode("""function(params) { 
+                return params.value !== null && params.value !== undefined ? params.value.toFixed(2) : ''; 
+            }""")
+        elif col == 'চাল প্রাপ্তি (F)':
+            # Ensure F column is treated as numeric
+            opts['type'] = ['numericColumn', 'numberColumn']
+            opts['valueFormatter'] = JsCode("""function(params) { 
+                return params.value !== null && params.value !== undefined ? params.value.toFixed(2) : ''; 
+            }""")
+        elif col in ['গ্রহণের পরিমাণ (D)', 'বাকিতে নেওয়া (E)']:
+            opts['valueFormatter'] = JsCode("""function(params) { 
+                return params.value !== null && params.value !== undefined ? params.value.toFixed(2) : ''; 
+            }""")
         if pin:
             opts['pinned'] = pin
-            
-        # Special handling for F column to ensure it's visible
-        if col == 'চাল প্রাপ্তি (F)':
-            opts['cellStyle'] = {'backgroundColor': '#fff3e0', 'fontWeight': 'bold'}
-            
         gb_results.configure_column(col, **opts)
     
     gb_results.configure_grid_options(
@@ -206,7 +228,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     )
     grid_opts_results = gb_results.build()
     
-    # Display the grid - CRITICAL: Show F column properly
+    # Display the grid
     AgGrid(
         df2,
         gridOptions=grid_opts_results,
@@ -216,17 +238,8 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         height=600,
         theme=theme,
         allow_unsafe_jscode=True,
-        custom_css={
-            ".ag-header-cell[col-id='চাল প্রাপ্তি (F)']": {
-                "background-color": "#ff8f00 !important",
-                "color": "white !important"
-            }
-        }
+        reload_data=True  # Force reload to ensure values are displayed
     )
-    
-    # Add debug information to verify F values
-    st.caption("F Column Verification (12% of D):")
-    st.dataframe(df2[['Date', 'Day', 'গ্রহণের পরিমাণ (D)', 'চাল প্রাপ্তি (F)']].head(10))
     
     # Add export options
     st.subheader("💾 Export Results")
@@ -234,7 +247,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     st.download_button(
         label="Download as CSV",
         data=csv,
-        file_name='rice_flow_report.csv',
+        file_name=f'rice_flow_report_{month}_{year}.csv',
         mime='text/csv'
     )
 
@@ -242,18 +255,19 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
 with st.sidebar:
     st.header("Instructions")
     st.markdown("""
-    1. Select the **first weekday** of the month
-    2. Enter values in:
+    1. Select the **month and year**
+    2. Select the **first weekday** of the month
+    3. Enter values in:
        - **D (গ্রহণের পরিমাণ)**: Rice received
        - **E (বাকিতে নেওয়া)**: Rice taken on credit
-    3. Set the **Initial G** (balance before 1st day)
-    4. Click **Calculate Rice Flow**
+    4. Set the **Initial G** (balance before 1st day)
+    5. Click **Calculate Rice Flow**
     
     ### Calculation Formula
-    - **F (চাল প্রাপ্তি)** = D × Rate (always 12% of D)
+    - **F (চাল প্রাপ্তি)** = D × Rate
     - **G (চাল ব্যবহার)**:
       - Day 1: Initial_G - F₁
-      - Day n: Gₙ₋₁ - Fₙ + Eₙ₋₁
+      - Day n: Gₙ = Gₙ₋₁ - Fₙ + Eₙ₋₁
     
     ### Key Relationships
     - E values affect the NEXT day's G calculation
@@ -268,8 +282,10 @@ with st.sidebar:
     
     st.info("""
     **Note**: 
-    - F column shows 12% of D values (highlighted in orange)
     - Negative G values are shown in red indicating deficit
     - 'Initial G' is the balance before the 1st day
     - E values from a day affect the next day's calculation
+    - The last day's E value is not used (no next day)
+    - Sunday is not included in any weekly group
+    - F column shows 12% of D values (custom rate)
     """)
