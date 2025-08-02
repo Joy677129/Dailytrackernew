@@ -72,16 +72,15 @@ if st.button("Compute All G"):
         pd.to_numeric(df2["বাকিতে নেওয়া (E)"],errors='coerce').fillna(0)
     # F calculation
     df2["চাল প্রাপ্তি (F)"]=df2["গ্রহণের পরিমাণ (D)"]*RATE
-    # Revised G logic: today's E reduces usage
-    G=[initial_G]
-    for i in range(1,len(df2)):
-        prev=G[-1]
-        used= df2.at[i,"চাল প্রাপ্তি (F)"]
-        taken= df2.at[i,"বাকিতে নেওয়া (E)"]
-        # Subtract F and E for current day
-        G.append(prev - used - taken)
-    df2["G (চাল ব্যবহার)"]=G
-    df2=df2[cols]
+        # G logic: subtract today's F, add yesterday's E
+    G = [initial_G]
+    for i in range(1, len(df2)):
+        prev = G[-1]
+        F_i = df2.at[i, "চাল প্রাপ্তি (F)"]
+        E_prev = df2.at[i-1, "বাকিতে নেওয়া (E)"]
+        G.append(prev - F_i + E_prev)
+    df2["G (চাল ব্যবহার)"] = G
+    df2 = df2[cols]
 
     # Totals
     st.markdown("### Weekly Totals:")
