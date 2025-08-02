@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
+from calendar import monthrange
+import datetime
 
 # Page configuration
 theme = 'alpine'
@@ -20,16 +23,26 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Month and year selection
+col1, col2 = st.columns(2)
+with col1:
+    month = st.selectbox("Select Month:", list(range(1, 13)), format_func=lambda x: datetime.date(2023, x, 1).strftime('%B'), index=7)  # August is index 7
+with col2:
+    year = st.selectbox("Select Year:", list(range(2020, 2031)), index=5)  # 2025 is index 5
+
+# Get number of days in selected month
+num_days = monthrange(year, month)[1]
+
 # Weekday selection
-days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-first_day = st.selectbox("Weekday of 1st of month:", days_of_week, index=0)
-offset = days_of_week.index(first_day)
+weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+first_day = st.selectbox("Weekday of 1st of month:", weekdays, index=0)
+offset = weekdays.index(first_day)
 
-# Build template DataFrame
-dates = list(range(1, 32))
-days = [days_of_week[(offset + d - 1) % 7] for d in dates]
+# Build template with correct number of days
+dates = list(range(1, num_days + 1))
+days = [weekdays[(offset + d - 1) % 7] for d in dates]
 
-template = pd.DataFrame({
+df = pd.DataFrame({
     'Date': dates,
     'Day': days,
     'গ্রহণের পরিমাণ (D)': 0.0,
@@ -38,132 +51,205 @@ template = pd.DataFrame({
     'G (চাল ব্যবহার)': 0.0
 })
 
-# Configure AgGrid for inputs
-gb = GridOptionsBuilder.from_dataframe(template)
-col_settings = [
-    ('Date', False, 80, 'header-dark', '#f2f2f2'),
-    ('Day', False, 100, 'header-day', '#ede7f6'),
-    ('গ্রহণের পরিমাণ (D)', True, 140, 'header-blue', '#e0f7fa'),
-    ('বাকিতে নেওয়া (E)', True, 140, 'header-green', '#e8f5e9'),
-    ('চাল প্রাপ্তি (F)', False, 130, 'header-dark', '#fffde7'),
-    ('G (চাল ব্যবহার)', False, 130, 'header-red', '#ffebee')
+# Grid configuration
+gb = GridOptionsBuilder.from_dataframe(df)
+cols_cfg = [
+    ('Date', False, 80, 'header-dark', '#f2f2f2', 'left'),
+    ('Day', False, 100, 'header-day', '#ede7f6', 'left'),
+    ('গ্রহণের পরিমাণ (D)', True, 140, 'header-blue', '#e0f7fa', None),
+    ('বাকিতে নেওয়া (E)', True, 140, 'header-green', '#e8f5e9', None),
+    ('চাল প্রাপ্তি (F)', False, 130, 'header-dark', '#fffde7', None),
+    ('G (চাল ব্যবহার)', False, 130, 'header-red', '#ffebee', None)
 ]
-for col, editable, width, cls, bg in col_settings:
+for col, editable, width, cls, bg, pin in cols_cfg:
     opts = {'editable': editable, 'width': width, 'headerClass': cls, 'cellStyle': {'backgroundColor': bg}}
+    if pin:
+        opts['pinned'] = pin
     gb.configure_column(col, **opts)
-grid_options = gb.build()
+    
+grid_opts = gb.build()
 
-# Show input grid
+# Enforce column order
+df = df[[c[0] for c in cols_cfg]]
+
+# Display input grid
 st.markdown("### Enter D & E Values (leave blank for 0)")
-response = AgGrid(
-    template,
-    gridOptions=grid_options,
+resp = AgGrid(
+    df,
+    gridOptions=grid_opts,
     data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
     update_mode=GridUpdateMode.MODEL_CHANGED,
     fit_columns_on_grid_load=True,
-    height=450,
+    height=500,
     theme=theme
 )
-inputs_df = pd.DataFrame(response['data']).reset_index(drop=True)
+edf = pd.DataFrame(resp['data']).reset_index(drop=True)[[c[0] for c in cols_cfg]]
 
-# User parameters
+# Inputs section
 st.subheader("Calculation Parameters")
 col1, col2 = st.columns(2)
 with col1:
-    initial_balance = st.number_input("Initial G (Before 1st day)", min_value=0.0,
-                                      value=174.47, step=1.0, format="%.2f")
+    initial_g = st.number_input("Initial G (Before 1st day)", min_value=0.0, value=174.47, step=1.0, format="%.2f",
+                               help="Starting balance (G value before the 1st day)")
 with col2:
-    rate = st.number_input("Custom Rate (%)", min_value=0.0, max_value=100.0,
-                           value=12.0, step=0.5) / 100
+    custom_rate = st.number_input("Custom Rate (%)", min_value=0.0, max_value=100.0, value=12.0, step=0.5) / 100
 
-# Calculate on button click
+# Compute on button click
 if st.button("🚀 Calculate Rice Flow", use_container_width=True):
-    df = inputs_df.copy()
-
-    # Ensure numeric for D and E
-    df['গ্রহণের পরিমাণ (D)'] = pd.to_numeric(df['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
-    df['বাকিতে নেওয়া (E)'] = pd.to_numeric(df['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
-
-    # F = D * rate
-    df['চাল প্রাপ্তি (F)'] = df['গ্রহণের পরিমাণ (D)'] * rate
-
-    # Compute running G
-    g_values = []
-    g_values.append(initial_balance - df.at[0, 'চাল প্রাপ্তি (F)'])
-    for i in range(1, len(df)):
-        prev = g_values[-1]
-        f_curr = df.at[i, 'চাল প্রাপ্তি (F)']
-        e_prev = df.at[i-1, 'বাকিতে নেওয়া (E)']
-        g_values.append(prev - f_curr + e_prev)
-    df['G (চাল ব্যবহার)'] = g_values
-
-    # Weekly totals
+    df2 = edf.copy()
+    
+    # Convert to numeric and handle missing values
+    df2['গ্রহণের পরিমাণ (D)'] = pd.to_numeric(df2['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
+    df2['বাকিতে নেওয়া (E)'] = pd.to_numeric(df2['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
+    
+    # Calculate F column (চাল প্রাপ্তি)
+    df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
+    
+    # Calculate G column (চাল ব্যবহার) using corrected logic
+    g_vals = []
+    current_g = initial_g
+    
+    for i in range(len(df2)):
+        # Subtract current day's F
+        current_g -= df2.at[i, 'চাল প্রাপ্তি (F)']
+        
+        # Add previous day's E if available
+        if i > 0:
+            current_g += df2.at[i-1, 'বাকিতে নেওয়া (E)']
+            
+        g_vals.append(current_g)
+    
+    df2['G (চাল ব্যবহার)'] = g_vals
+    
+    # Weekly totals calculation
     st.subheader("📅 Weekly Remaining G Totals")
-    groups = {
+    week_map = {
         'I (Mon/Thu)': ['Monday', 'Thursday'],
         'J (Tue/Fri)': ['Tuesday', 'Friday'],
         'K (Wed/Sat)': ['Wednesday', 'Saturday']
     }
-    for label, days in groups.items():
-        total = df[df['Day'].isin(days)]['G (চাল ব্যবহার)'].sum()
+    
+    # Calculate and display weekly sums
+    weekly_totals = {}
+    for label, days_list in week_map.items():
+        days_df = df2[df2['Day'].isin(days_list)]
+        total = days_df['G (চাল ব্যবহার)'].sum()
+        weekly_totals[label] = total
         st.metric(label, f"{total:.2f}")
-
-    # Summary row
-    summary = {
-        'Date': '',
-        'Day': 'TOTAL',
-        'গ্রহণের পরিমাণ (D)': df['গ্রহণের পরিমাণ (D)'].sum(),
-        'বাকিতে নেওয়া (E)': df['বাকিতে নেওয়া (E)'].sum(),
-        'চাল প্রাপ্তি (F)': df['চাল প্রাপ্তি (F)'].sum(),
-        'G (চাল ব্যবহার)': df['G (চাল ব্যবহার)'].sum()
-    }
-    df = pd.concat([df, pd.DataFrame([summary])], ignore_index=True)
-
-    # Display results with styling
+    
+    # Add summary row
+    summary_row = pd.DataFrame({
+        'Date': [''],
+        'Day': ['TOTAL'],
+        'গ্রহণের পরিমাণ (D)': [df2['গ্রহণের পরিমাণ (D)'].sum()],
+        'বাকিতে নেওয়া (E)': [df2['বাকিতে নেওয়া (E)'].sum()],
+        'চাল প্রাপ্তি (F)': [df2['চাল প্রাপ্তি (F)'].sum()],
+        'G (চাল ব্যবহার)': [df2['G (চাল ব্যবহার)'].sum()]
+    })
+    
+    # Combine with main data
+    df2 = pd.concat([df2, summary_row], ignore_index=True)
+    
+    # Display results table using AgGrid
     st.subheader("📊 Results Table")
-    gb2 = GridOptionsBuilder.from_dataframe(df)
-    highlight_total = JsCode("""
+    
+    # Configure results grid
+    gb_results = GridOptionsBuilder.from_dataframe(df2)
+    
+    # Create JavaScript functions for styling
+    row_style_jscode = JsCode("""
         function(params) {
-            return params.data.Day === 'TOTAL' ? { 'backgroundColor': '#bbdefb', 'fontWeight': 'bold' } : null;
-        }
+            if (params.data.Day === 'TOTAL') {
+                return {
+                    'backgroundColor': '#bbdefb',
+                    'fontWeight': 'bold'
+                };
+            }
+            return null;
+        };
     """)
-    highlight_neg = JsCode("""
+    
+    cell_style_jscode = JsCode("""
         function(params) {
-            return params.value < 0 ? { 'color': 'red', 'fontWeight': 'bold' } : null;
-        }
+            if (params.value < 0) {
+                return {
+                    'color': 'red',
+                    'fontWeight': 'bold'
+                };
+            }
+            return null;
+        };
     """)
-    for col, _, width, cls, bg in col_settings:
-        opts = {'width': width, 'headerClass': cls, 'cellStyle': {'backgroundColor': bg}}
-        if col == 'G (চাল ব্যবহার)': opts['cellStyle'] = highlight_neg
-        gb2.configure_column(col, **opts)
-    gb2.configure_grid_options(rowStyle=highlight_total)
-
+    
+    for col, _, width, cls, bg, pin in cols_cfg:
+        opts = {
+            'width': width, 
+            'headerClass': cls, 
+            'cellStyle': {'backgroundColor': bg}
+        }
+        if col == 'G (চাল ব্যবহার)':
+            opts['cellStyle'] = cell_style_jscode
+        if pin:
+            opts['pinned'] = pin
+        gb_results.configure_column(col, **opts)
+    
+    gb_results.configure_grid_options(rowStyle=row_style_jscode)
+    grid_opts_results = gb_results.build()
+    
+    # Display the grid
     AgGrid(
-        df,
-        gridOptions=gb2.build(),
+        df2,
+        gridOptions=grid_opts_results,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
         update_mode=GridUpdateMode.NO_UPDATE,
         fit_columns_on_grid_load=True,
-        height=550,
+        height=600,
         theme=theme,
         allow_unsafe_jscode=True
     )
-
-    # Export
+    
+    # Add export options
     st.subheader("💾 Export Results")
-    csv_data = df.to_csv(index=False).encode('utf-8')
-    st.download_button("Download as CSV", data=csv_data, file_name='rice_flow_report.csv', mime='text/csv')
+    csv = df2.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download as CSV",
+        data=csv,
+        file_name='rice_flow_report.csv',
+        mime='text/csv'
+    )
 
-# Sidebar
+# Sidebar information
 with st.sidebar:
     st.header("Instructions")
     st.markdown("""
-1. Select the **first weekday** of the month
-2. Enter values for **D** (received) and **E** (credit taken)
-3. Set **Initial G** (balance before day 1)
-4. Click **Calculate Rice Flow**
-
-**Tips**:
-- Negative G in red = deficit
-- E affects next day's balance
-""")
+    1. Select the **month and year**
+    2. Select the **first weekday** of the month
+    3. Enter values in:
+       - **D (গ্রহণের পরিমাণ)**: Rice received
+       - **E (বাকিতে নেওয়া)**: Rice taken on credit
+    4. Set the **Initial G** (balance before 1st day)
+    5. Click **Calculate Rice Flow**
+    
+    ### Calculation Formula
+    - **F (চাল প্রাপ্তি)** = D × Rate
+    - **G (চাল ব্যবহার)**:
+      - Day 1: Initial_G - F₁
+      - Day n: Gₙ = Gₙ₋₁ - Fₙ + Eₙ₋₁
+    
+    ### Key Relationships
+    - E values affect the NEXT day's G calculation
+    - E from day (i) is used in day (i+1) calculation
+    
+    ### Weekly Groups
+    - **I**: Monday & Thursday
+    - **J**: Tuesday & Friday
+    - **K**: Wednesday & Saturday
+    """)
+    
+    st.info("""
+    **Note**: 
+    - Negative G values are shown in red indicating deficit
+    - 'Initial G' is the balance before the 1st day
+    - E values from a day affect the next day's calculation
+    - The last day's E value is not used (no next day)
+    """)
