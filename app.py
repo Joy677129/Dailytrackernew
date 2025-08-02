@@ -25,12 +25,14 @@ first_index = weekdays.index(first_day)
 # Build blank template for days 1–31, default numeric to 0
 dates = list(range(1, 32))
 days = [weekdays[(first_index + d - 1) % 7] for d in dates]
+RATE = 0.12  # Fixed rate for চাল প্রাপ্তি calculation
 
 df_template = pd.DataFrame({
     "Date": dates,
     "Day": days,
     "গ্রহণের পরিমাণ (D)": 0.0,
-    "চাল প্রাপ্তি": 0.0,
+    # F will be calculated as D * RATE, so show initial zeros but non-editable
+    "চাল প্রাপ্তি (F)": 0.0,
     "বাকিতে নেওয়া (E)": 0.0,
     "G (চাল ব্যবহার)": 0.0,
 })
@@ -42,7 +44,7 @@ for col, opts in {
     "Date": {"editable": False, "width": 80,  "headerClass": "header-dark", "bg": "#f2f2f2", "pinned": 'left'},
     "Day": {"editable": False, "width": 100, "headerClass": "header-day",  "bg": "#ede7f6", "pinned": 'left'},
     "গ্রহণের পরিমাণ (D)": {"editable": True,  "width": 140, "headerClass": "header-blue", "bg": "#e0f7fa"},
-    "চাল প্রাপ্তি": {"editable": True,  "width": 130, "headerClass": "header-dark", "bg": "#fffde7"},
+    "চাল প্রাপ্তি (F)": {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fffde7"},
     "বাকিতে নেওয়া (E)": {"editable": True,  "width": 140, "headerClass": "header-green", "bg": "#e8f5e9"},
     "G (চাল ব্যবহার)": {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fff9c4"},
 }.items():
@@ -57,7 +59,7 @@ for col, opts in {
 grid_opts_input = gb.build()
 
 # Display input grid
-st.markdown("### 1) Enter D, F & E values in the table below (blank treated as 0):")
+st.markdown("### 1) Enter D & E values in the table below (F is auto-calculated):")
 response = AgGrid(
     df_template,
     gridOptions=grid_opts_input,
@@ -79,15 +81,18 @@ if st.button("Compute All G"):
     df2["Date"] = dates
     df2["Day"] = days
 
-    # Coerce D, F & E to numeric, treat any blanks or invalid as 0
-    for col in ["গ্রহণের পরিমাণ (D)", "চাল প্রাপ্তি", "বাকিতে নেওয়া (E)"]:
-        df2[col] = pd.to_numeric(df2[col], errors="coerce").fillna(0)
+    # Coerce D & E to numeric, treat blanks as 0
+    df2["গ্রহণের পরিমাণ (D)"] = pd.to_numeric(df2["গ্রহণের পরিমাণ (D)"], errors="coerce").fillna(0)
+    df2["বাকিতে নেওয়া (E)"   ] = pd.to_numeric(df2["বাকিতে নেওয়া (E)"   ], errors="coerce").fillna(0)
+
+    # Calculate F = D * RATE
+    df2["চাল প্রাপ্তি (F)"] = df2["গ্রহণের পরিমাণ (D)"] * RATE
 
     # Calculate G sequentially
     G_vals = [initial_G]
     for i in range(1, len(df2)):
         prev = G_vals[-1]
-        received = df2.iloc[i]["চাল প্রাপ্তি"]
+        received = df2.iloc[i]["চাল প্রাপ্তি (F)"]
         carried = df2.iloc[i-1]["বাকিতে নেওয়া (E)"]
         G_vals.append(prev - received + carried)
     df2["G (চাল ব্যবহার)"] = G_vals
