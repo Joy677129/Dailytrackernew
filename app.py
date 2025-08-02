@@ -24,6 +24,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Fixed rate as per requirement
+RATE = 0.12
+
 # Weekday selection
 weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 first_day = st.selectbox("Weekday of 1st of month:", weekdays, index=0)
@@ -42,14 +45,14 @@ df = pd.DataFrame({
     'G (চাল ব্যবহার)': 0.0
 })
 
-# Grid configuration - UPDATED FOR F COLUMN
+# Grid configuration
 gb = GridOptionsBuilder.from_dataframe(df)
 cols_cfg = [
     ('Date', False, 80, 'header-dark', '#f2f2f2', 'left'),
     ('Day', False, 100, 'header-day', '#ede7f6', 'left'),
     ('গ্রহণের পরিমাণ (D)', True, 140, 'header-blue', '#e0f7fa', None),
     ('বাকিতে নেওয়া (E)', True, 140, 'header-green', '#e8f5e9', None),
-    ('চাল প্রাপ্তি (F)', False, 130, 'header-orange', '#fff3e0', None),  # Changed to orange for visibility
+    ('চাল প্রাপ্তি (F)', False, 130, 'header-orange', '#fff3e0', None),
     ('G (চাল ব্যবহার)', False, 130, 'header-red', '#ffebee', None)
 ]
 for col, editable, width, cls, bg, pin in cols_cfg:
@@ -76,14 +79,13 @@ resp = AgGrid(
 )
 edf = pd.DataFrame(resp['data']).reset_index(drop=True)[[c[0] for c in cols_cfg]]
 
-# Inputs section
+# Inputs section - Removed custom rate
 st.subheader("Calculation Parameters")
-col1, col2 = st.columns(2)
-with col1:
-    initial_g = st.number_input("Initial G (Before 1st day)", min_value=0.0, value=174.47, step=1.0, format="%.2f",
-                               help="Starting balance (G value before the 1st day)")
-with col2:
-    custom_rate = st.number_input("Custom Rate (%)", min_value=0.0, max_value=100.0, value=12.0, step=0.5) / 100
+initial_g = st.number_input("Initial G (Before 1st day)", min_value=0.0, value=174.47, step=1.0, format="%.2f",
+                          help="Starting balance (G value before the 1st day)")
+
+# Show fixed rate
+st.info(f"Fixed Rice Rate: {RATE*100}%")
 
 # Compute on button click
 if st.button("🚀 Calculate Rice Flow", use_container_width=True):
@@ -93,8 +95,8 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     df2['গ্রহণের পরিমাণ (D)'] = pd.to_numeric(df2['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
     df2['বাকিতে নেওয়া (E)'] = pd.to_numeric(df2['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
     
-    # Calculate F column (চাল প্রাপ্তি) - 12% of D
-    df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
+    # Calculate F column (চাল প্রাপ্তি) - fixed 12% of D
+    df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * RATE
     
     # Calculate G column (চাল ব্যবহার) using Excel logic
     g_vals = []
@@ -179,7 +181,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         };
     """)
     
-    # Apply column configurations - CRITICAL FIX: Ensure all columns are properly configured
+    # Apply column configurations
     for col, _, width, cls, bg, pin in cols_cfg:
         opts = {
             'width': width, 
@@ -192,7 +194,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         if pin:
             opts['pinned'] = pin
             
-        # Special handling for F column to ensure it's visible
+        # Special styling for F column
         if col == 'চাল প্রাপ্তি (F)':
             opts['cellStyle'] = {'backgroundColor': '#fff3e0', 'fontWeight': 'bold'}
             
@@ -206,7 +208,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     )
     grid_opts_results = gb_results.build()
     
-    # Display the grid - CRITICAL: Show F column properly
+    # Display the grid
     AgGrid(
         df2,
         gridOptions=grid_opts_results,
@@ -223,10 +225,6 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
             }
         }
     )
-    
-    # Add debug information to verify F values
-    st.caption("F Column Verification (12% of D):")
-    st.dataframe(df2[['Date', 'Day', 'গ্রহণের পরিমাণ (D)', 'চাল প্রাপ্তি (F)']].head(10))
     
     # Add export options
     st.subheader("💾 Export Results")
@@ -250,7 +248,7 @@ with st.sidebar:
     4. Click **Calculate Rice Flow**
     
     ### Calculation Formula
-    - **F (চাল প্রাপ্তি)** = D × Rate (always 12% of D)
+    - **F (চাল প্রাপ্তি)** = D × 12%
     - **G (চাল ব্যবহার)**:
       - Day 1: Initial_G - F₁
       - Day n: Gₙ₋₁ - Fₙ + Eₙ₋₁
@@ -258,7 +256,7 @@ with st.sidebar:
     ### Key Relationships
     - E values affect the NEXT day's G calculation
     - E from day (i) is used in day (i+1) calculation
-    - F values are calculated from current day's D
+    - F values are calculated as 12% of D
     
     ### Weekly Groups (D Column Sums)
     - **I**: Monday & Thursday
@@ -268,6 +266,7 @@ with st.sidebar:
     
     st.info("""
     **Note**: 
+    - Fixed rice rate: 12% (0.12)
     - F column shows 12% of D values (highlighted in orange)
     - Negative G values are shown in red indicating deficit
     - 'Initial G' is the balance before the 1st day
