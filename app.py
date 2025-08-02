@@ -28,9 +28,7 @@ offset = weekdays.index(first_day)
 # Build template
 dates = list(range(1,32))
 days = [weekdays[(offset + d - 1) % 7] for d in dates]
-RATE = 0.12
 
-# Original Bengali column names
 df = pd.DataFrame({
     'Date': dates,
     'Day': days,
@@ -78,7 +76,8 @@ edf = pd.DataFrame(resp['data']).reset_index(drop=True)[[c[0] for c in cols_cfg]
 st.subheader("Calculation Parameters")
 col1, col2 = st.columns(2)
 with col1:
-    g0 = st.number_input("Baseline G (Day 1)", min_value=0.0, value=100.0, step=1.0, format="%.2f")
+    initial_g = st.number_input("Initial G (Before 1st day)", min_value=0.0, value=174.47, step=1.0, format="%.2f",
+                               help="Starting balance (G value before the 1st day)")
 with col2:
     custom_rate = st.number_input("Custom Rate (%)", min_value=0.0, max_value=100.0, value=12.0, step=0.5) / 100
 
@@ -86,27 +85,33 @@ with col2:
 if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     df2 = edf.copy()
     
-    # Use original Bengali column names for data retrieval
-    # But create simplified versions for internal processing
-    df2['D'] = pd.to_numeric(df2['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
-    df2['E'] = pd.to_numeric(df2['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
+    # Convert to numeric and handle missing values
+    df2['গ্রহণের পরিমাণ (D)'] = pd.to_numeric(df2['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
+    df2['বাকিতে নেওয়া (E)'] = pd.to_numeric(df2['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
     
-    # Calculate F column with custom rate
-    df2['F'] = df2['D'] * custom_rate
+    # Calculate F column (চাল প্রাপ্তি)
+    df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
     
-    # Calculate G column
-    G_vals = [g0 - df2.at[0, 'F']]
+    # Calculate G column (চাল ব্যবহার) using Excel logic
+    g_vals = []
+    
+    # For first day: G = Initial_G - F_current + E_previous
+    # But there's no E_previous before first day, so E_previous = 0
+    first_g = initial_g - df2.at[0, 'চাল প্রাপ্তি (F)']
+    g_vals.append(first_g)
+    
+    # For subsequent days: G_current = G_previous - F_current + E_previous
+    # Where E_previous is from the previous day
     for i in range(1, len(df2)):
-        prev_G = G_vals[-1]
-        F_i = df2.at[i, 'F']
-        E_prev = df2.at[i-1, 'E']
-        G_vals.append(prev_G - F_i + E_prev)
+        prev_g = g_vals[i-1]
+        current_f = df2.at[i, 'চাল প্রাপ্তি (F)']
+        prev_e = df2.at[i-1, 'বাকিতে নেওয়া (E)']
+        current_g = prev_g - current_f + prev_e
+        g_vals.append(current_g)
     
-    # Update the original columns with calculated values
-    df2['চাল প্রাপ্তি (F)'] = df2['F']
-    df2['G (চাল ব্যবহার)'] = G_vals
+    df2['G (চাল ব্যবহার)'] = g_vals
     
-    # Weekly totals of G
+    # Weekly totals calculation
     st.subheader("📅 Weekly Remaining G Totals")
     week_map = {
         'I (Mon/Thu)': ['Monday', 'Thursday'],
@@ -114,38 +119,52 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         'K (Wed/Sat)': ['Wednesday', 'Saturday']
     }
     
-    # Calculate totals and format
-    totals = {}
+    # Calculate and display weekly sums
+    weekly_totals = {}
     for label, days_list in week_map.items():
         days_df = df2[df2['Day'].isin(days_list)]
         total = days_df['G (চাল ব্যবহার)'].sum()
-        totals[label] = total
+        weekly_totals[label] = total
         st.metric(label, f"{total:.2f}")
     
     # Add summary row
     summary_row = pd.DataFrame({
         'Date': [''],
         'Day': ['TOTAL'],
-        'গ্রহণের পরিমাণ (D)': [df2['D'].sum()],
-        'বাকিতে নেওয়া (E)': [df2['E'].sum()],
-        'চাল প্রাপ্তি (F)': [df2['F'].sum()],
+        'গ্রহণের পরিমাণ (D)': [df2['গ্রহণের পরিমাণ (D)'].sum()],
+        'বাকিতে নেওয়া (E)': [df2['বাকিতে নেওয়া (E)'].sum()],
+        'চাল প্রাপ্তি (F)': [df2['চাল প্রাপ্তি (F)'].sum()],
         'G (চাল ব্যবহার)': [df2['G (চাল ব্যবহার)'].sum()]
     })
     
     # Combine with main data
     df2 = pd.concat([df2, summary_row], ignore_index=True)
     
-    # Display results table using Streamlit's native table
+    # Display results table
     st.subheader("📊 Results Table")
     
-    # Create a copy for display with formatted G values
+    # Create a copy for display with formatted values
     display_df = df2.copy()
-    display_df['G (চাল ব্যবহার)'] = display_df['G (চাল ব্যবহার)'].apply(
-        lambda x: f"<span style='color:red;font-weight:bold'>{x:.2f}</span>" if x < 0 else f"{x:.2f}"
-    )
     
-    # Display as HTML table
-    st.markdown(display_df[[c[0] for c in cols_cfg]].to_html(escape=False, index=False), unsafe_allow_html=True)
+    # Format numeric columns
+    num_cols = ['গ্রহণের পরিমাণ (D)', 'বাকিতে নেওয়া (E)', 'চাল প্রাপ্তি (F)', 'G (চাল ব্যবহার)']
+    for col in num_cols:
+        display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x)
+    
+    # Format negative values and totals row
+    for i in range(len(display_df)):
+        if display_df.at[i, 'Day'] == 'TOTAL':
+            # Bold entire totals row
+            for col in display_df.columns:
+                display_df.at[i, col] = f"**{display_df.at[i, col]}**"
+        else:
+            # Format negative G values in red
+            g_val = df2.at[i, 'G (চাল ব্যবহার)']
+            if isinstance(g_val, (int, float)) and g_val < 0:
+                display_df.at[i, 'G (চাল ব্যবহার)'] = f":red[**{display_df.at[i, 'G (চাল ব্যবহার)']}**]"
+    
+    # Display as Markdown table
+    st.markdown(display_df.to_markdown(index=False), unsafe_allow_html=True)
     
     # Add export options
     st.subheader("💾 Export Results")
@@ -165,14 +184,18 @@ with st.sidebar:
     2. Enter values in:
        - **D (গ্রহণের পরিমাণ)**: Rice received
        - **E (বাকিতে নেওয়া)**: Rice taken on credit
-    3. Set the **Baseline G** (starting balance)
+    3. Set the **Initial G** (balance before 1st day)
     4. Click **Calculate Rice Flow**
     
     ### Calculation Formula
     - **F (চাল প্রাপ্তি)** = D × Rate
     - **G (চাল ব্যবহার)**:
-      - Day 1: G0 - F₁
+      - Day 1: Initial_G - F₁
       - Day n: Gₙ₋₁ - Fₙ + Eₙ₋₁
+    
+    ### Key Relationships
+    - E values affect the NEXT day's G calculation
+    - E from day (i) is used in day (i+1) calculation
     
     ### Weekly Groups
     - **I**: Monday & Thursday
@@ -180,4 +203,9 @@ with st.sidebar:
     - **K**: Wednesday & Saturday
     """)
     
-    st.info("Note: Negative G values are shown in red indicating deficit")
+    st.info("""
+    **Note**: 
+    - Negative G values are shown in red indicating deficit
+    - 'Initial G' is the balance before the 1st day (like Excel's G2)
+    - E values from a day affect the next day's calculation
+    """)
