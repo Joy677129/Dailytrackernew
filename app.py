@@ -32,45 +32,39 @@ df = pd.DataFrame({
     "Date": dates,
     "Day": days,
     "গ্রহণের পরিমাণ (D)": np.nan,
+    "চাল প্রাপ্তি": np.nan,
     "বাকিতে নেওয়া (E)": np.nan,
     "G (চাল ব্যবহার)": np.nan,
 })
 
 # 2) Configure AgGrid
 gb = GridOptionsBuilder.from_dataframe(df)
-# Prevent adding or removing rows
 gb.configure_grid_options(suppressRowDrag=True)
-# Date column – read-only, pinned left, light grey
-gb.configure_column(
-    "Date", editable=False, pinned='left', width=80,
-    headerClass="header-dark",
-    cellStyle={"backgroundColor": "#f2f2f2"}
-)
-# Day column – read-only, pinned left, tinted header
-gb.configure_column(
-    "Day", editable=False, pinned='left', width=100,
-    headerClass="header-day",
-    cellStyle={"backgroundColor": "#ede7f6"}
-)
-# D column – editable, light cyan
-gb.configure_column(
-    "গ্রহণের পরিমাণ (D)", editable=True, width=140,
-    headerClass="header-blue",
-    cellStyle={"backgroundColor": "#e0f7fa"}
-)
-# E column – editable, light green
-gb.configure_column(
-    "বাকিতে নেওয়া (E)", editable=True, width=140,
-    headerClass="header-green",
-    cellStyle={"backgroundColor": "#e8f5e9"}
-)
-# G column – read-only with pastel background
-gb.configure_column("G (চাল ব্যবহার)", editable=False, width=130, cellStyle={"backgroundColor": "#fff9c4"})
+
+# Style and edit columns
+columns = {
+    "Date":            {"editable": False, "width": 80,  "headerClass": "header-dark", "bg": "#f2f2f2", "pinned": 'left'},
+    "Day":             {"editable": False, "width": 100, "headerClass": "header-day",  "bg": "#ede7f6", "pinned": 'left'},
+    "গ্রহণের পরিমাণ (D)": {"editable": True,  "width": 140, "headerClass": "header-blue", "bg": "#e0f7fa"},
+    "চাল প্রাপ্তি":     {"editable": True,  "width": 130, "headerClass": "header-dark", "bg": "#fffde7"},
+    "বাকিতে নেওয়া (E)": {"editable": True,  "width": 140, "headerClass": "header-green", "bg": "#e8f5e9"},
+    "G (চাল ব্যবহার)":  {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fff9c4"},
+}
+
+for col, opts in columns.items():
+    gb.configure_column(
+        col,
+        editable=opts.get("editable", True),
+        width=opts.get("width", 120),
+        headerClass=opts.get("headerClass", ""),
+        pinned=opts.get("pinned", None),
+        cellStyle={"backgroundColor": opts.get("bg", "white")}
+    )
 
 grid_opts = gb.build()
 
 # 3) Display editable grid
-st.markdown("### 1) Enter D & E values in the table below:")
+st.markdown("### 1) Enter D, F & E values in the table below:")
 response = AgGrid(
     df,
     gridOptions=grid_opts,
@@ -93,25 +87,24 @@ initial_G = st.number_input(
 # 5) Compute button
 if st.button("Compute All G"):
     df2 = edited_df.copy()
-    # Reset Date and Day to ensure fixed sequence
     df2["Date"] = dates
     df2["Day"] = days
 
     # Fill blanks with zeros
     df2["গ্রহণের পরিমাণ (D)"].fillna(0, inplace=True)
+    df2["চাল প্রাপ্তি"].fillna(0, inplace=True)
     df2["বাকিতে নেওয়া (E)"].fillna(0, inplace=True)
 
-    # Compute G: G[0]=initial_G; G[n]=G[n-1] - F[n] + E[n-1]
+    # Logic: G[n] = G[n-1] - চাল প্রাপ্তি[n] + বাকিতে নেওয়া[n-1]
     G = [initial_G]
-    F_col = df2.get("চাল প্রাপ্তি", pd.Series(0, index=df2.index))
     for i in range(1, len(df2)):
-        prev = G[-1]
-        F_i = F_col.iloc[i]
+        prev_G = G[-1]
+        F_i = df2["চাল প্রাপ্তি"].iloc[i]
         E_prev = df2["বাকিতে নেওয়া (E)"].iloc[i-1]
-        G.append(prev - F_i + E_prev)
+        G.append(prev_G - F_i + E_prev)
     df2["G (চাল ব্যবহার)"] = G
 
-    # Show totals for Mon/Thu, Tue/Fri, Wed/Sat from D
+    # Totals for days
     total_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "গ্রহণের পরিমাণ (D)"].sum()
     total_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]), "গ্রহণের পরিমাণ (D)"].sum()
     total_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "গ্রহণের পরিমাণ (D)"].sum()
