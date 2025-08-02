@@ -30,11 +30,14 @@ df = pd.DataFrame({
 # 2) Configure AgGrid
 gb = GridOptionsBuilder.from_dataframe(df)
 # Prevent adding or removing rows
-gb.configure_grid_options(suppressRowDrag=True, suppressRowGroup=True,
-                          suppressRowTransform=True, suppressRowClickSelection=True)
-# Date column – read-only, fixed 1–31, light grey
+gb.configure_grid_options(suppressRowDrag=True)
+
+# Date column – read-only, pinned left, light grey
 gb.configure_column(
-    "Date", editable=False, width=80,
+    "Date",
+    editable=False,
+    pinned='left',
+    width=80,
     headerClass="header-dark",
     cellStyle={"backgroundColor": "#f2f2f2"}
 )
@@ -51,10 +54,22 @@ gb.configure_column(
     cellStyle={"backgroundColor": "#e8f5e9"}
 )
 # G, I, J, K columns – read-only with pastel backgrounds
-gb.configure_column("G (চাল ব্যবহার)", editable=False, width=130, cellStyle={"backgroundColor": "#fff9c4"})
-gb.configure_column("I (Mon/Thu)", editable=False, width=130, cellStyle={"backgroundColor": "#ffe0b2"})
-gb.configure_column("J (Tue/Fri)", editable=False, width=130, cellStyle={"backgroundColor": "#f3e5f5"})
-gb.configure_column("K (Wed/Sat)", editable=False, width=130, cellStyle={"backgroundColor": "#fce4ec"})
+gb.configure_column(
+    "G (চাল ব্যবহার)", editable=False, width=130,
+    cellStyle={"backgroundColor": "#fff9c4"}
+)
+gb.configure_column(
+    "I (Mon/Thu)", editable=False, width=130,
+    cellStyle={"backgroundColor": "#ffe0b2"}
+)
+gb.configure_column(
+    "J (Tue/Fri)", editable=False, width=130,
+    cellStyle={"backgroundColor": "#f3e5f5"}
+)
+gb.configure_column(
+    "K (Wed/Sat)", editable=False, width=130,
+    cellStyle={"backgroundColor": "#fce4ec"}
+)
 
 grid_opts = gb.build()
 
@@ -68,6 +83,7 @@ response = AgGrid(
     fit_columns_on_grid_load=True,
     enable_enterprise_modules=False,
     height=500,
+    theme='alpine'
 )
 
 edited_df = pd.DataFrame(response["data"])
@@ -81,8 +97,9 @@ initial_G = st.number_input(
 # 5) Compute button
 if st.button("Compute All G, I, J, K"):
     df2 = edited_df.copy()
-    # Enforce Date values 1–31
+    # Reset Date to 1–31 to ensure it's fixed
     df2["Date"] = list(range(1, 32))
+
     # Fill blanks with zeros
     df2["গ্রহণের পরিমাণ (D)"].fillna(0, inplace=True)
     df2["বাকিতে নেওয়া (E)"].fillna(0, inplace=True)
@@ -110,4 +127,5 @@ if st.button("Compute All G, I, J, K"):
         gridOptions=grid_opts,
         fit_columns_on_grid_load=True,
         height=500,
+        theme='alpine'
     )
