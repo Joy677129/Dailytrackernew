@@ -40,7 +40,6 @@ df_template = pd.DataFrame({
 # Configure AgGrid options for input grid in desired column order
 gb = GridOptionsBuilder.from_dataframe(df_template)
 gb.configure_grid_options(suppressRowDrag=True)
-# Define column display order and styles
 col_order = [
     ("Date", False, 80, "header-dark", "#f2f2f2", 'left'),
     ("Day", False, 100, "header-day", "#ede7f6", 'left'),
@@ -54,7 +53,6 @@ for col, editable, width, headerClass, bg, pinned in col_order:
     if pinned:
         gopts["pinned"] = pinned
     gb.configure_column(col, **gopts)
-# Apply column order
 grid_opts_input = gb.build()
 # Enforce order in DataFrame itself when rendering
 df_template = df_template[[c[0] for c in col_order]]
@@ -78,13 +76,15 @@ initial_G = st.number_input("Baseline চাল ব্যবহার (G₂, Day
 # Compute button
 if st.button("Compute All G"):
     # Prepare working copy and reset index
-    df2 = edited_df.copy().reset_index(drop=True)
-    df2[["Date", "Day"]] = [dates, days]
+df2 = edited_df.copy().reset_index(drop=True)
+# Assign Date and Day separately to match lengths
+    df2["Date"] = dates
+    df2["Day"] = days
     # Coerce inputs
-    df2["গ্রহণের পরিমাণ (D)"] = pd.to_numeric(df2["গ্রহণের পরিমাণ (D)"], errors="coerce").fillna(0)
+df2["গ্রহণের পরিমাণ (D)"] = pd.to_numeric(df2["গ্রহণের পরিমাণ (D)"], errors="coerce").fillna(0)
     df2["বাকিতে নেওয়া (E)"] = pd.to_numeric(df2["বাকিতে নেওয়া (E)"], errors="coerce").fillna(0)
     # Calculate F then G
-    df2["চাল প্রাপ্তি (F)"] = df2["গ্রহণের পরিমাণ (D)"] * RATE
+df2["চাল প্রাপ্তি (F)"] = df2["গ্রহণের পরিমাণ (D)"] * RATE
     G_vals = [initial_G]
     for i in range(1, len(df2)):
         prev = G_vals[-1]
@@ -98,12 +98,11 @@ if st.button("Compute All G"):
 
     # Show weekly totals and results
     st.markdown("### Weekly Totals from D & E:")
-    for name, col in [("D Mon/Thu (I)", "গ্রহণের পরিমাণ (D)"), ("D Tue/Fri (J)", "গ্রহণের পরিমাণ (D)"), ("D Wed/Sat (K)", "গ্রহণের পরিমাণ (D)"),
-                      ("E Mon/Thu (I)", "বাকিতে নেওয়া (E)"), ("E Tue/Fri (J)", "বাকিতে নেওয়া (E)"), ("E Wed/Sat (K)", "বাকিতে নেওয়া (E)")]:
-        days_map = {"I": ["Monday", "Thursday"], "J": ["Tuesday", "Friday"], "K": ["Wednesday", "Saturday"]}
-        key = name.split()[-1].strip('()')
-        total = df2.loc[df2["Day"].isin(days_map[key]), col].sum()
-        st.write(f"**{name}**: {total:.2f}")
+    days_map = {"I": ["Monday", "Thursday"], "J": ["Tuesday", "Friday"], "K": ["Wednesday", "Saturday"]}
+    for label, col_key, grp in [("D Mon/Thu (I)", "গ্রহণের পরিমাণ (D)", "I"), ("D Tue/Fri (J)", "গ্রহণের পরিমাণ (D)", "J"), ("D Wed/Sat (K)", "গ্রহণের পরিমাণ (D)", "K"),
+                                ("E Mon/Thu (I)", "বাকিতে নেওয়া (E)", "I"), ("E Tue/Fri (J)", "বাকিতে নেওয়া (E)", "J"), ("E Wed/Sat (K)", "বাকিতে নেওয়া (E)", "K")]:
+        total = df2.loc[df2["Day"].isin(days_map[grp]), col_key].sum()
+        st.write(f"**{label}**: {total:.2f}")
 
     st.markdown("### Results Table:")
     gb2 = GridOptionsBuilder.from_dataframe(df2)
