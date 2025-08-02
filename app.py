@@ -92,24 +92,23 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     df2['গ্রহণের পরিমাণ (D)'] = pd.to_numeric(df2['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
     df2['বাকিতে নেওয়া (E)'] = pd.to_numeric(df2['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
     
-    # Calculate F column (চাল প্রাপ্তি)
+    # Calculate F column (চাল প্রাপ্তি) - 12% of D
     df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
     
     # Calculate G column (চাল ব্যবহার) using Excel logic
     g_vals = []
     
-    # For first day: G = Initial_G - F_current + E_previous
-    # Since there's no E_previous before first day, we use 0
+    # For first day: G = Initial_G - F_current
+    # There's no E_previous before first day
     first_g = initial_g - df2.iloc[0]['চাল প্রাপ্তি (F)'] 
     g_vals.append(first_g)
     
     # For subsequent days: G_current = G_previous - F_current + E_previous
+    # CORRECTED: Using current day's F value, not previous day's
     for i in range(1, len(df2)):
         prev_g = g_vals[i-1]
-        current_f = df2.iloc[i]['চাল প্রাপ্তি (F)']
-        
-        # Use E value from previous day (i-1)
-        prev_e = df2.iloc[i-1]['বাকিতে নেওয়া (E)']
+        current_f = df2.iloc[i]['চাল প্রাপ্তি (F)']  # Current day's F
+        prev_e = df2.iloc[i-1]['বাকিতে নেওয়া (E)']  # Previous day's E
         
         current_g = prev_g - current_f + prev_e
         g_vals.append(current_g)
@@ -120,15 +119,12 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     st.subheader("📅 Weekly Totals (I, J, K Groups)")
     
     # Calculate weekly sums for D column (গ্রহণের পরিমাণ)
-    # Group I: Mon/Thu - Monday and Thursday
     group_i_days = ['Monday', 'Thursday']
     group_i_values = df2[df2['Day'].isin(group_i_days)]['গ্রহণের পরিমাণ (D)'].sum()
     
-    # Group J: Tue/Fri - Tuesday and Friday
     group_j_days = ['Tuesday', 'Friday']
     group_j_values = df2[df2['Day'].isin(group_j_days)]['গ্রহণের পরিমাণ (D)'].sum()
     
-    # Group K: Wed/Sat - Wednesday and Saturday
     group_k_days = ['Wednesday', 'Saturday']
     group_k_values = df2[df2['Day'].isin(group_k_days)]['গ্রহণের পরিমাণ (D)'].sum()
     
@@ -246,6 +242,7 @@ with st.sidebar:
     ### Key Relationships
     - E values affect the NEXT day's G calculation
     - E from day (i) is used in day (i+1) calculation
+    - F values are calculated from current day's D
     
     ### Weekly Groups (D Column Sums)
     - **I**: Monday & Thursday
