@@ -60,8 +60,8 @@ cols_cfg = [
     ('Day', False, 100, 'header-day', '#ede7f6', 'left'),
     ('গ্রহণের পরিমাণ (D)', True, 140, 'header-blue', '#e0f7fa', None),
     ('বাকিতে নেওয়া (E)', True, 140, 'header-green', '#e8f5e9', None),
-    ('চাল প্রাপ্তি (F)', False, 130, 'header-dark', '#fffde7', None),
-    ('G (চাল ব্যবহার)', False, 130, 'header-red', '#ffebee', None)
+    ('চাল প্রাপ্তি (F)', False, 150, 'header-dark', '#fffde7', None),  # Increased width for better visibility
+    ('G (চাল ব্যবহার)', False, 150, 'header-red', '#ffebee', None)    # Increased width for better visibility
 ]
 for col, editable, width, cls, bg, pin in cols_cfg:
     opts = {'editable': editable, 'width': width, 'headerClass': cls, 'cellStyle': {'backgroundColor': bg}}
@@ -157,6 +157,9 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Combine with main data
     df2 = pd.concat([df2, summary_row], ignore_index=True)
     
+    # Ensure F column is properly formatted with 2 decimal places
+    df2['চাল প্রাপ্তি (F)'] = df2['চাল প্রাপ্তি (F)'].apply(lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x)
+    
     # Display results table
     st.subheader("📊 Results Table")
     
@@ -190,14 +193,21 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         };
     """)
     
+    # Explicitly configure all columns with type information
     for col, _, width, cls, bg, pin in cols_cfg:
         opts = {
             'width': width, 
             'headerClass': cls, 
-            'cellStyle': {'backgroundColor': bg}
+            'cellStyle': {'backgroundColor': bg},
+            'type': ['numericColumn', 'numberColumn']  # Explicitly set column type
         }
         if col == 'G (চাল ব্যবহার)':
             opts['cellStyle'] = cell_style_jscode
+            opts['type'] = ['numericColumn', 'numberColumn']
+        if col == 'চাল প্রাপ্তি (F)':
+            # Ensure F column is treated as numeric
+            opts['type'] = ['numericColumn', 'numberColumn']
+            opts['valueFormatter'] = {"function": "params.value == null ? '' : parseFloat(params.value).toFixed(2)"}
         if pin:
             opts['pinned'] = pin
         gb_results.configure_column(col, **opts)
@@ -219,7 +229,8 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         fit_columns_on_grid_load=True,
         height=600,
         theme=theme,
-        allow_unsafe_jscode=True
+        allow_unsafe_jscode=True,
+        reload_data=True  # Force reload to ensure values are displayed
     )
     
     # Add export options
@@ -268,4 +279,5 @@ with st.sidebar:
     - E values from a day affect the next day's calculation
     - The last day's E value is not used (no next day)
     - Sunday is not included in any weekly group
+    - F column shows 12% of D values (custom rate)
     """)
