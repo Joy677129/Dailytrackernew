@@ -97,7 +97,7 @@ if st.button("Compute All G"):
         G_vals.append(prev - received + carried)
     df2["G (চাল ব্যবহার)"] = G_vals
 
-    # Compute weekly totals
+    # Compute weekly totals for D
     total_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "গ্রহণের পরিমাণ (D)"].sum()
     total_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]),   "গ্রহণের পরিমাণ (D)"].sum()
     total_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "গ্রহণের পরিমাণ (D)"].sum()
@@ -106,6 +106,16 @@ if st.button("Compute All G"):
     st.write(f"**Mon/Thu (I)**: {total_I:.2f}")
     st.write(f"**Tue/Fri (J)**: {total_J:.2f}")
     st.write(f"**Wed/Sat (K)**: {total_K:.2f}")
+
+    # Compute weekly totals for E
+    total_E_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "বাকিতে নেওয়া (E)"].sum()
+    total_E_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]),   "বাকিতে নেওয়া (E)"].sum()
+    total_E_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "বাকিতে নেওয়া (E)"].sum()
+
+    st.markdown("### Weekly Totals from বাকিতে নেওয়া (E):")
+    st.write(f"**Mon/Thu (E_I)**: {total_E_I:.2f}")
+    st.write(f"**Tue/Fri (E_J)**: {total_E_J:.2f}")
+    st.write(f"**Wed/Sat (E_K)**: {total_E_K:.2f}")
 
     # Display results in read-only grid
     st.markdown("### Results Table:")
