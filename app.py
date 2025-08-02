@@ -27,39 +27,40 @@ dates = list(range(1, 32))
 days = [weekdays[(first_index + d - 1) % 7] for d in dates]
 RATE = 0.12  # Fixed rate for চাল প্রাপ্তি calculation
 
+# Ensure column order matches Excel: D, E, F, then G
 df_template = pd.DataFrame({
     "Date": dates,
     "Day": days,
     "গ্রহণের পরিমাণ (D)": 0.0,
-    # F will be calculated as D * RATE, so show initial zeros but non-editable
-    "চাল প্রাপ্তি (F)": 0.0,
     "বাকিতে নেওয়া (E)": 0.0,
+    "চাল প্রাপ্তি (F)": 0.0,
     "G (চাল ব্যবহার)": 0.0,
 })
 
-# Configure AgGrid options for input grid
+# Configure AgGrid options for input grid in desired column order
 gb = GridOptionsBuilder.from_dataframe(df_template)
 gb.configure_grid_options(suppressRowDrag=True)
-for col, opts in {
-    "Date": {"editable": False, "width": 80,  "headerClass": "header-dark", "bg": "#f2f2f2", "pinned": 'left'},
-    "Day": {"editable": False, "width": 100, "headerClass": "header-day",  "bg": "#ede7f6", "pinned": 'left'},
-    "গ্রহণের পরিমাণ (D)": {"editable": True,  "width": 140, "headerClass": "header-blue", "bg": "#e0f7fa"},
-    "চাল প্রাপ্তি (F)": {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fffde7"},
-    "বাকিতে নেওয়া (E)": {"editable": True,  "width": 140, "headerClass": "header-green", "bg": "#e8f5e9"},
-    "G (চাল ব্যবহার)": {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fff9c4"},
-}.items():
-    gb.configure_column(
-        col,
-        editable=opts["editable"],
-        width=opts["width"],
-        headerClass=opts["headerClass"],
-        pinned=opts.get("pinned"),
-        cellStyle={"backgroundColor": opts["bg"]}
-    )
+# Define column display order and styles
+col_order = [
+    ("Date", False, 80, "header-dark", "#f2f2f2", 'left'),
+    ("Day", False, 100, "header-day", "#ede7f6", 'left'),
+    ("গ্রহণের পরিমাণ (D)", True, 140, "header-blue", "#e0f7fa", None),
+    ("বাকিতে নেওয়া (E)", True, 140, "header-green", "#e8f5e9", None),
+    ("চাল প্রাপ্তি (F)", False, 130, "header-dark", "#fffde7", None),
+    ("G (চাল ব্যবহার)", False, 130, "header-dark", "#fff9c4", None),
+]
+for col, editable, width, headerClass, bg, pinned in col_order:
+    gopts = {"editable": editable, "width": width, "headerClass": headerClass, "cellStyle": {"backgroundColor": bg}}
+    if pinned:
+        gopts["pinned"] = pinned
+    gb.configure_column(col, **gopts)
+# Apply column order
 grid_opts_input = gb.build()
+# Enforce order in DataFrame itself when rendering
+df_template = df_template[[c[0] for c in col_order]]
 
 # Display input grid
-st.markdown("### 1) Enter D & E values in the table below (F is auto-calculated):")
+st.markdown("### 1) Enter D & E values in the table below (F auto-calculated):")
 response = AgGrid(
     df_template,
     gridOptions=grid_opts_input,
@@ -69,55 +70,41 @@ response = AgGrid(
     height=400,
     theme='alpine'
 )
-edited_df = pd.DataFrame(response["data"])
+edited_df = pd.DataFrame(response["data"])[[c[0] for c in col_order]]
 
 # Baseline G₂ input
 initial_G = st.number_input("Baseline চাল ব্যবহার (G₂, Day 1)", min_value=0.0, step=0.1, format="%.2f")
 
 # Compute button
 if st.button("Compute All G"):
-    # Prepare working copy and reset index for sequential access
+    # Prepare working copy and reset index
     df2 = edited_df.copy().reset_index(drop=True)
-    df2["Date"] = dates
-    df2["Day"] = days
-
-    # Coerce D & E to numeric, treat blanks as 0
+    df2[["Date", "Day"]] = [dates, days]
+    # Coerce inputs
     df2["গ্রহণের পরিমাণ (D)"] = pd.to_numeric(df2["গ্রহণের পরিমাণ (D)"], errors="coerce").fillna(0)
-    df2["বাকিতে নেওয়া (E)"   ] = pd.to_numeric(df2["বাকিতে নেওয়া (E)"   ], errors="coerce").fillna(0)
-
-    # Calculate F = D * RATE
+    df2["বাকিতে নেওয়া (E)"] = pd.to_numeric(df2["বাকিতে নেওয়া (E)"], errors="coerce").fillna(0)
+    # Calculate F then G
     df2["চাল প্রাপ্তি (F)"] = df2["গ্রহণের পরিমাণ (D)"] * RATE
-
-    # Calculate G sequentially
     G_vals = [initial_G]
     for i in range(1, len(df2)):
         prev = G_vals[-1]
-        received = df2.iloc[i]["চাল প্রাপ্তি (F)"]
-        carried = df2.iloc[i-1]["বাকিতে নেওয়া (E)"]
-        G_vals.append(prev - received + carried)
+        rec = df2.iloc[i]["চাল প্রাপ্তি (F)"]
+        car = df2.iloc[i-1]["বাকিতে নেওয়া (E)"]
+        G_vals.append(prev - rec + car)
     df2["G (চাল ব্যবহার)"] = G_vals
 
-    # Compute weekly totals for D
-    total_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "গ্রহণের পরিমাণ (D)"].sum()
-    total_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]),   "গ্রহণের পরিমাণ (D)"].sum()
-    total_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "গ্রহণের পরিমাণ (D)"].sum()
+    # Reorder columns before display
+    df2 = df2[[c[0] for c in col_order]]
 
-    st.markdown("### Weekly Totals from গ্রহণের পরিমাণ (D):")
-    st.write(f"**Mon/Thu (I)**: {total_I:.2f}")
-    st.write(f"**Tue/Fri (J)**: {total_J:.2f}")
-    st.write(f"**Wed/Sat (K)**: {total_K:.2f}")
+    # Show weekly totals and results
+    st.markdown("### Weekly Totals from D & E:")
+    for name, col in [("D Mon/Thu (I)", "গ্রহণের পরিমাণ (D)"), ("D Tue/Fri (J)", "গ্রহণের পরিমাণ (D)"), ("D Wed/Sat (K)", "গ্রহণের পরিমাণ (D)"),
+                      ("E Mon/Thu (I)", "বাকিতে নেওয়া (E)"), ("E Tue/Fri (J)", "বাকিতে নেওয়া (E)"), ("E Wed/Sat (K)", "বাকিতে নেওয়া (E)")]:
+        days_map = {"I": ["Monday", "Thursday"], "J": ["Tuesday", "Friday"], "K": ["Wednesday", "Saturday"]}
+        key = name.split()[-1].strip('()')
+        total = df2.loc[df2["Day"].isin(days_map[key]), col].sum()
+        st.write(f"**{name}**: {total:.2f}")
 
-    # Compute weekly totals for E
-    total_E_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "বাকিতে নেওয়া (E)"].sum()
-    total_E_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]),   "বাকিতে নেওয়া (E)"].sum()
-    total_E_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "বাকিতে নেওয়া (E)"].sum()
-
-    st.markdown("### Weekly Totals from বাকিতে নেওয়া (E):")
-    st.write(f"**Mon/Thu (E_I)**: {total_E_I:.2f}")
-    st.write(f"**Tue/Fri (E_J)**: {total_E_J:.2f}")
-    st.write(f"**Wed/Sat (E_K)**: {total_E_K:.2f}")
-
-    # Display results in read-only grid
     st.markdown("### Results Table:")
     gb2 = GridOptionsBuilder.from_dataframe(df2)
     gb2.configure_default_column(editable=False)
