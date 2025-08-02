@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode
+from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
 
 # Page configuration
 theme = 'alpine'
@@ -17,6 +17,7 @@ st.markdown("""
   .header-day .ag-header-cell-label { background-color: #6a1b9a !important; color: white; }
   .header-red .ag-header-cell-label { background-color: #d32f2f !important; color: white; }
   .negative { color: red !important; font-weight: bold; }
+  .total-row { background-color: #bbdefb !important; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -95,13 +96,11 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Calculate G column (চাল ব্যবহার) using Excel logic
     g_vals = []
     
-    # For first day: G = Initial_G - F_current + E_previous
-    # But there's no E_previous before first day, so E_previous = 0
+    # For first day: G = Initial_G - F_current
     first_g = initial_g - df2.at[0, 'চাল প্রাপ্তি (F)']
     g_vals.append(first_g)
     
     # For subsequent days: G_current = G_previous - F_current + E_previous
-    # Where E_previous is from the previous day
     for i in range(1, len(df2)):
         prev_g = g_vals[i-1]
         current_f = df2.at[i, 'চাল প্রাপ্তি (F)']
@@ -140,31 +139,63 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Combine with main data
     df2 = pd.concat([df2, summary_row], ignore_index=True)
     
-    # Display results table
+    # Display results table using AgGrid
     st.subheader("📊 Results Table")
     
-    # Create a copy for display with formatted values
-    display_df = df2.copy()
+    # Configure results grid
+    gb_results = GridOptionsBuilder.from_dataframe(df2)
     
-    # Format numeric columns
-    num_cols = ['গ্রহণের পরিমাণ (D)', 'বাকিতে নেওয়া (E)', 'চাল প্রাপ্তি (F)', 'G (চাল ব্যবহার)']
-    for col in num_cols:
-        display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x)
+    # Create JavaScript functions for styling
+    row_style_jscode = JsCode("""
+        function(params) {
+            if (params.data.Day === 'TOTAL') {
+                return {
+                    'backgroundColor': '#bbdefb',
+                    'fontWeight': 'bold'
+                };
+            }
+            return null;
+        };
+    """)
     
-    # Format negative values and totals row
-    for i in range(len(display_df)):
-        if display_df.at[i, 'Day'] == 'TOTAL':
-            # Bold entire totals row
-            for col in display_df.columns:
-                display_df.at[i, col] = f"**{display_df.at[i, col]}**"
-        else:
-            # Format negative G values in red
-            g_val = df2.at[i, 'G (চাল ব্যবহার)']
-            if isinstance(g_val, (int, float)) and g_val < 0:
-                display_df.at[i, 'G (চাল ব্যবহার)'] = f":red[**{display_df.at[i, 'G (চাল ব্যবহার)']}**]"
+    cell_style_jscode = JsCode("""
+        function(params) {
+            if (params.value < 0) {
+                return {
+                    'color': 'red',
+                    'fontWeight': 'bold'
+                };
+            }
+            return null;
+        };
+    """)
     
-    # Display as Markdown table
-    st.markdown(display_df.to_markdown(index=False), unsafe_allow_html=True)
+    for col, _, width, cls, bg, pin in cols_cfg:
+        opts = {
+            'width': width, 
+            'headerClass': cls, 
+            'cellStyle': {'backgroundColor': bg}
+        }
+        if col == 'G (চাল ব্যবহার)':
+            opts['cellStyle'] = cell_style_jscode
+        if pin:
+            opts['pinned'] = pin
+        gb_results.configure_column(col, **opts)
+    
+    gb_results.configure_grid_options(rowStyle=row_style_jscode)
+    grid_opts_results = gb_results.build()
+    
+    # Display the grid
+    AgGrid(
+        df2,
+        gridOptions=grid_opts_results,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        update_mode=GridUpdateMode.NO_UPDATE,
+        fit_columns_on_grid_load=True,
+        height=600,
+        theme=theme,
+        allow_unsafe_jscode=True
+    )
     
     # Add export options
     st.subheader("💾 Export Results")
