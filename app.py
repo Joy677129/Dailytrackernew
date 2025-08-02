@@ -30,12 +30,13 @@ dates = list(range(1,32))
 days = [weekdays[(offset + d - 1) % 7] for d in dates]
 RATE = 0.12
 
+# Original Bengali column names
 df = pd.DataFrame({
     'Date': dates,
     'Day': days,
-    'D (গ্রহণের পরিমাণ)': 0.0,
-    'E (বাকিতে নেওয়া)': 0.0,
-    'F (চাল প্রাপ্তি)': 0.0,
+    'গ্রহণের পরিমাণ (D)': 0.0,
+    'বাকিতে নেওয়া (E)': 0.0,
+    'চাল প্রাপ্তি (F)': 0.0,
     'G (চাল ব্যবহার)': 0.0
 })
 
@@ -44,9 +45,9 @@ gb = GridOptionsBuilder.from_dataframe(df)
 cols_cfg = [
     ('Date', False, 80, 'header-dark', '#f2f2f2', 'left'),
     ('Day', False, 100, 'header-day', '#ede7f6', 'left'),
-    ('D (গ্রহণের পরিমাণ)', True, 140, 'header-blue', '#e0f7fa', None),
-    ('E (বাকিতে নেওয়া)', True, 140, 'header-green', '#e8f5e9', None),
-    ('F (চাল প্রাপ্তি)', False, 130, 'header-dark', '#fffde7', None),
+    ('গ্রহণের পরিমাণ (D)', True, 140, 'header-blue', '#e0f7fa', None),
+    ('বাকিতে নেওয়া (E)', True, 140, 'header-green', '#e8f5e9', None),
+    ('চাল প্রাপ্তি (F)', False, 130, 'header-dark', '#fffde7', None),
     ('G (চাল ব্যবহার)', False, 130, 'header-red', '#ffebee', None)
 ]
 for col, editable, width, cls, bg, pin in cols_cfg:
@@ -84,20 +85,25 @@ with col2:
 # Compute on button click
 if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     df2 = edf.copy()
-    # Enforce correct data types
-    df2['D (গ্রহণের পরিমাণ)'] = pd.to_numeric(df2['D (গ্রহণের পরিমাণ)'], errors='coerce').fillna(0)
-    df2['E (বাকিতে নেওয়া)'] = pd.to_numeric(df2['E (বাকিতে নেওয়া)'], errors='coerce').fillna(0)
+    
+    # Use original Bengali column names for data retrieval
+    # But create simplified versions for internal processing
+    df2['D'] = pd.to_numeric(df2['গ্রহণের পরিমাণ (D)'], errors='coerce').fillna(0)
+    df2['E'] = pd.to_numeric(df2['বাকিতে নেওয়া (E)'], errors='coerce').fillna(0)
     
     # Calculate F column with custom rate
-    df2['F (চাল প্রাপ্তি)'] = df2['D (গ্রহণের পরিমাণ)'] * custom_rate
+    df2['F'] = df2['D'] * custom_rate
     
     # Calculate G column
-    G_vals = [g0 - df2.at[0, 'F (চাল প্রাপ্তি)']]
+    G_vals = [g0 - df2.at[0, 'F']]
     for i in range(1, len(df2)):
         prev_G = G_vals[-1]
-        F_i = df2.at[i, 'F (চাল প্রাপ্তি)']
-        E_prev = df2.at[i-1, 'E (বাকিতে নেওয়া)']
+        F_i = df2.at[i, 'F']
+        E_prev = df2.at[i-1, 'E']
         G_vals.append(prev_G - F_i + E_prev)
+    
+    # Update the original columns with calculated values
+    df2['চাল প্রাপ্তি (F)'] = df2['F']
     df2['G (চাল ব্যবহার)'] = G_vals
     
     # Weekly totals of G
@@ -120,9 +126,9 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     summary_row = pd.DataFrame({
         'Date': [''],
         'Day': ['TOTAL'],
-        'D (গ্রহণের পরিমাণ)': [df2['D (গ্রহণের পরিমাণ)'].sum()],
-        'E (বাকিতে নেওয়া)': [df2['E (বাকিতে নেওয়া)'].sum()],
-        'F (চাল প্রাপ্তি)': [df2['F (চাল প্রাপ্তি)'].sum()],
+        'গ্রহণের পরিমাণ (D)': [df2['D'].sum()],
+        'বাকিতে নেওয়া (E)': [df2['E'].sum()],
+        'চাল প্রাপ্তি (F)': [df2['F'].sum()],
         'G (চাল ব্যবহার)': [df2['G (চাল ব্যবহার)'].sum()]
     })
     
@@ -135,17 +141,11 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Create a copy for display with formatted G values
     display_df = df2.copy()
     display_df['G (চাল ব্যবহার)'] = display_df['G (চাল ব্যবহার)'].apply(
-        lambda x: f"**{x:.2f}**" if x < 0 else f"{x:.2f}"
+        lambda x: f"<span style='color:red;font-weight:bold'>{x:.2f}</span>" if x < 0 else f"{x:.2f}"
     )
     
-    # Display as table with conditional formatting
-    st.dataframe(
-        display_df.style.applymap(
-            lambda x: 'color: red' if isinstance(x, str) and x.startswith('**') else '', 
-            subset=['G (চাল ব্যবহার)']
-        ),
-        height=600
-    )
+    # Display as HTML table
+    st.markdown(display_df[[c[0] for c in cols_cfg]].to_html(escape=False, index=False), unsafe_allow_html=True)
     
     # Add export options
     st.subheader("💾 Export Results")
