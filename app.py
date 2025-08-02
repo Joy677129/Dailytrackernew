@@ -13,12 +13,24 @@ st.markdown("""
   .header-dark .ag-header-cell-label { background-color: #424242 !important; color: white; }
   .header-blue .ag-header-cell-label { background-color: #0288d1 !important; color: white; }
   .header-green .ag-header-cell-label { background-color: #43a047 !important; color: white; }
+  .header-day .ag-header-cell-label { background-color: #6a1b9a !important; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
+# Ask user for the weekday of the 1st of the month
+weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+first_day = st.selectbox(
+    "Select the weekday of the 1st of the month:", weekdays, index=0
+)
+first_index = weekdays.index(first_day)  # 0-based index
+
 # 1) Build the blank template for days 1–31
+dates = list(range(1, 32))
+days = [(weekdays[(first_index + d - 1) % 7]) for d in dates]
+
 df = pd.DataFrame({
-    "Date": list(range(1, 32)),
+    "Date": dates,
+    "Day": days,
     "গ্রহণের পরিমাণ (D)": np.nan,
     "বাকিতে নেওয়া (E)": np.nan,
     "G (চাল ব্যবহার)": np.nan,
@@ -31,15 +43,17 @@ df = pd.DataFrame({
 gb = GridOptionsBuilder.from_dataframe(df)
 # Prevent adding or removing rows
 gb.configure_grid_options(suppressRowDrag=True)
-
 # Date column – read-only, pinned left, light grey
 gb.configure_column(
-    "Date",
-    editable=False,
-    pinned='left',
-    width=80,
+    "Date", editable=False, pinned='left', width=80,
     headerClass="header-dark",
     cellStyle={"backgroundColor": "#f2f2f2"}
+)
+# Day column – read-only, pinned left, tinted header
+gb.configure_column(
+    "Day", editable=False, pinned='left', width=100,
+    headerClass="header-day",
+    cellStyle={"backgroundColor": "#ede7f6"}
 )
 # D column – editable, light cyan
 gb.configure_column(
@@ -54,22 +68,10 @@ gb.configure_column(
     cellStyle={"backgroundColor": "#e8f5e9"}
 )
 # G, I, J, K columns – read-only with pastel backgrounds
-gb.configure_column(
-    "G (চাল ব্যবহার)", editable=False, width=130,
-    cellStyle={"backgroundColor": "#fff9c4"}
-)
-gb.configure_column(
-    "I (Mon/Thu)", editable=False, width=130,
-    cellStyle={"backgroundColor": "#ffe0b2"}
-)
-gb.configure_column(
-    "J (Tue/Fri)", editable=False, width=130,
-    cellStyle={"backgroundColor": "#f3e5f5"}
-)
-gb.configure_column(
-    "K (Wed/Sat)", editable=False, width=130,
-    cellStyle={"backgroundColor": "#fce4ec"}
-)
+gb.configure_column("G (চাল ব্যবহার)", editable=False, width=130, cellStyle={"backgroundColor": "#fff9c4"})
+gb.configure_column("I (Mon/Thu)", editable=False, width=130, cellStyle={"backgroundColor": "#ffe0b2"})
+gb.configure_column("J (Tue/Fri)", editable=False, width=130, cellStyle={"backgroundColor": "#f3e5f5"})
+gb.configure_column("K (Wed/Sat)", editable=False, width=130, cellStyle={"backgroundColor": "#fce4ec"})
 
 grid_opts = gb.build()
 
@@ -97,8 +99,9 @@ initial_G = st.number_input(
 # 5) Compute button
 if st.button("Compute All G, I, J, K"):
     df2 = edited_df.copy()
-    # Reset Date to 1–31 to ensure it's fixed
-    df2["Date"] = list(range(1, 32))
+    # Reset Date and Day to ensure fixed sequence
+    df2["Date"] = dates
+    df2["Day"] = days
 
     # Fill blanks with zeros
     df2["গ্রহণের পরিমাণ (D)"].fillna(0, inplace=True)
