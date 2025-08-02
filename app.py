@@ -76,25 +76,25 @@ initial_G = st.number_input("Baseline চাল ব্যবহার (G₂, Day
 # Compute button
 if st.button("Compute All G"):
     # Prepare working copy and reset index
-df2 = edited_df.copy().reset_index(drop=True)
-# Assign Date and Day separately to match lengths
-    df2["Date"] = dates
-    df2["Day"] = days
-    # Coerce inputs
-df2["গ্রহণের পরিমাণ (D)"] = pd.to_numeric(df2["গ্রহণের পরিমাণ (D)"], errors="coerce").fillna(0)
-    df2["বাকিতে নেওয়া (E)"] = pd.to_numeric(df2["বাকিতে নেওয়া (E)"], errors="coerce").fillna(0)
-    # Calculate F then G
-df2["চাল প্রাপ্তি (F)"] = df2["গ্রহণের পরিমাণ (D)"] * RATE
-    G_vals = [initial_G]
-    for i in range(1, len(df2)):
-        prev = G_vals[-1]
-        rec = df2.iloc[i]["চাল প্রাপ্তি (F)"]
-        car = df2.iloc[i-1]["বাকিতে নেওয়া (E)"]
-        G_vals.append(prev - rec + car)
-    df2["G (চাল ব্যবহার)"] = G_vals
-
-    # Reorder columns before display
-    df2 = df2[[c[0] for c in col_order]]
+  df2 = edited_df.copy().reset_index(drop=True)
+  # Assign Date and Day separately to match lengths
+      df2["Date"] = dates
+      df2["Day"] = days
+      # Coerce inputs
+  df2["গ্রহণের পরিমাণ (D)"] = pd.to_numeric(df2["গ্রহণের পরিমাণ (D)"], errors="coerce").fillna(0)
+      df2["বাকিতে নেওয়া (E)"] = pd.to_numeric(df2["বাকিতে নেওয়া (E)"], errors="coerce").fillna(0)
+      # Calculate F then G
+  df2["চাল প্রাপ্তি (F)"] = df2["গ্রহণের পরিমাণ (D)"] * RATE
+      G_vals = [initial_G]
+      for i in range(1, len(df2)):
+          prev = G_vals[-1]
+          rec = df2.iloc[i]["চাল প্রাপ্তি (F)"]
+          car = df2.iloc[i-1]["বাকিতে নেওয়া (E)"]
+          G_vals.append(prev - rec + car)
+      df2["G (চাল ব্যবহার)"] = G_vals
+  
+      # Reorder columns before display
+      df2 = df2[[c[0] for c in col_order]]
 
     # Show weekly totals and results
     st.markdown("### Weekly Totals from D & E:")
