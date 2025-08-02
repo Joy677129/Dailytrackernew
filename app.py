@@ -90,10 +90,9 @@ if st.button("Compute All G"):
     df2["Date"] = dates
     df2["Day"] = days
 
-    # Fill blanks with zeros
-    df2["গ্রহণের পরিমাণ (D)"].fillna(0, inplace=True)
-    df2["চাল প্রাপ্তি"].fillna(0, inplace=True)
-    df2["বাকিতে নেওয়া (E)"].fillna(0, inplace=True)
+    # Ensure D, F & E are truly numeric (coerce non-numeric to NaN then fill with 0)
+    for col in ["গ্রহণের পরিমাণ (D)", "চাল প্রাপ্তি", "বাকিতে নেওয়া (E)"]:
+        df2[col] = pd.to_numeric(df2[col], errors="coerce").fillna(0)
 
     # Logic: G[n] = G[n-1] - চাল প্রাপ্তি[n] + বাকিতে নেওয়া[n-1]
     G = [initial_G]
@@ -106,7 +105,7 @@ if st.button("Compute All G"):
 
     # Totals for days
     total_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "গ্রহণের পরিমাণ (D)"].sum()
-    total_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]), "গ্রহণের পরিমাণ (D)"].sum()
+    total_J = df2.loc[df2["Day"].isin(["Tuesday", "Friday"]),   "গ্রহণের পরিমাণ (D)"].sum()
     total_K = df2.loc[df2["Day"].isin(["Wednesday", "Saturday"]), "গ্রহণের পরিমাণ (D)"].sum()
 
     st.markdown("### Weekly Totals from গ্রহণের পরিমাণ (D):")
