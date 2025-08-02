@@ -86,13 +86,13 @@ if st.button("Compute"):
     # Calculate F column
     df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * RATE
 
-    # Revised G logic: G[i] = G[i-1] - F[i] + E[i]
-    G_vals = [g0]
+    # Corrected G logic: G[0] = g0 - F[0], G[i] = G[i-1] - F[i] + E[i-1]
+    G_vals = [g0 - df2.at[0, 'চাল প্রাপ্তি (F)']]
     for i in range(1, len(df2)):
-        prev = G_vals[-1]
+        prev_G = G_vals[-1]
         F_i = df2.at[i, 'চাল প্রাপ্তি (F)']
-        E_i = df2.at[i, 'বাকিতে নেওয়া (E)']
-        G_vals.append(prev - F_i + E_i)
+        E_prev = df2.at[i-1, 'বাকিতে নেওয়া (E)']
+        G_vals.append(prev_G - F_i + E_prev)
     df2['G (চাল ব্যবহার)'] = G_vals
 
     # Reorder columns
