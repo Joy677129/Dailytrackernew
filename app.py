@@ -22,32 +22,30 @@ weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 
 first_day = st.selectbox("Select the weekday of the 1st of the month:", weekdays, index=0)
 first_index = weekdays.index(first_day)
 
-# Build blank template for days 1–31
+# Build blank template for days 1–31, default numeric to 0
 dates = list(range(1, 32))
 days = [weekdays[(first_index + d - 1) % 7] for d in dates]
 
 df_template = pd.DataFrame({
     "Date": dates,
     "Day": days,
-    "গ্রহণের পরিমাণ (D)": np.nan,
-    "চাল প্রাপ্তি": np.nan,
-    "বাকিতে নেওয়া (E)": np.nan,
-    "G (চাল ব্যবহার)": np.nan,
+    "গ্রহণের পরিমাণ (D)": 0.0,
+    "চাল প্রাপ্তি": 0.0,
+    "বাকিতে নেওয়া (E)": 0.0,
+    "G (চাল ব্যবহার)": 0.0,
 })
 
 # Configure AgGrid options for input grid
 gb = GridOptionsBuilder.from_dataframe(df_template)
 gb.configure_grid_options(suppressRowDrag=True)
-# Style columns
-columns = {
-    "Date":            {"editable": False, "width": 80,  "headerClass": "header-dark", "bg": "#f2f2f2", "pinned": 'left'},
-    "Day":             {"editable": False, "width": 100, "headerClass": "header-day",  "bg": "#ede7f6", "pinned": 'left'},
+for col, opts in {
+    "Date": {"editable": False, "width": 80,  "headerClass": "header-dark", "bg": "#f2f2f2", "pinned": 'left'},
+    "Day": {"editable": False, "width": 100, "headerClass": "header-day",  "bg": "#ede7f6", "pinned": 'left'},
     "গ্রহণের পরিমাণ (D)": {"editable": True,  "width": 140, "headerClass": "header-blue", "bg": "#e0f7fa"},
-    "চাল প্রাপ্তি":     {"editable": True,  "width": 130, "headerClass": "header-dark", "bg": "#fffde7"},
+    "চাল প্রাপ্তি": {"editable": True,  "width": 130, "headerClass": "header-dark", "bg": "#fffde7"},
     "বাকিতে নেওয়া (E)": {"editable": True,  "width": 140, "headerClass": "header-green", "bg": "#e8f5e9"},
-    "G (চাল ব্যবহার)":  {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fff9c4"},
-}
-for col, opts in columns.items():
+    "G (চাল ব্যবহার)": {"editable": False, "width": 130, "headerClass": "header-dark", "bg": "#fff9c4"},
+}.items():
     gb.configure_column(
         col,
         editable=opts["editable"],
@@ -59,7 +57,7 @@ for col, opts in columns.items():
 grid_opts_input = gb.build()
 
 # Display input grid
-st.markdown("### 1) Enter D, F & E values in the table below:")
+st.markdown("### 1) Enter D, F & E values in the table below (blank treated as 0):")
 response = AgGrid(
     df_template,
     gridOptions=grid_opts_input,
@@ -76,19 +74,23 @@ initial_G = st.number_input("Baseline চাল ব্যবহার (G₂, Day
 
 # Compute button
 if st.button("Compute All G"):
-    # Prepare working copy
-    df2 = edited_df.copy()
+    # Prepare working copy and reset index for sequential access
+    df2 = edited_df.copy().reset_index(drop=True)
     df2["Date"] = dates
     df2["Day"] = days
-    # Coerce to numeric
+
+    # Coerce D, F & E to numeric, treat any blanks or invalid as 0
     for col in ["গ্রহণের পরিমাণ (D)", "চাল প্রাপ্তি", "বাকিতে নেওয়া (E)"]:
         df2[col] = pd.to_numeric(df2[col], errors="coerce").fillna(0)
 
-    # Calculate G
-    G = [initial_G]
+    # Calculate G sequentially
+    G_vals = [initial_G]
     for i in range(1, len(df2)):
-        G.append(G[-1] - df2.at[i, "চাল প্রাপ্তি"] + df2.at[i-1, "বাকিতে নেওয়া (E)"])
-    df2["G (চাল ব্যবহার)"] = G
+        prev = G_vals[-1]
+        received = df2.iloc[i]["চাল প্রাপ্তি"]
+        carried = df2.iloc[i-1]["বাকিতে নেওয়া (E)"]
+        G_vals.append(prev - received + carried)
+    df2["G (চাল ব্যবহার)"] = G_vals
 
     # Compute weekly totals
     total_I = df2.loc[df2["Day"].isin(["Monday", "Thursday"]), "গ্রহণের পরিমাণ (D)"].sum()
@@ -100,14 +102,13 @@ if st.button("Compute All G"):
     st.write(f"**Tue/Fri (J)**: {total_J:.2f}")
     st.write(f"**Wed/Sat (K)**: {total_K:.2f}")
 
-    # Display results using a fresh grid builder
+    # Display results in read-only grid
     st.markdown("### Results Table:")
     gb2 = GridOptionsBuilder.from_dataframe(df2)
     gb2.configure_default_column(editable=False)
-    grid_opts_results = gb2.build()
     AgGrid(
         df2,
-        gridOptions=grid_opts_results,
+        gridOptions=gb2.build(),
         fit_columns_on_grid_load=True,
         height=400,
         theme='alpine'
