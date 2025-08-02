@@ -17,8 +17,6 @@ st.markdown("""
   .header-day .ag-header-cell-label { background-color: #6a1b9a !important; color: white; }
   .header-red .ag-header-cell-label { background-color: #d32f2f !important; color: white; }
   .header-orange .ag-header-cell-label { background-color: #f57c00 !important; color: white; }
-  .highlight-row { background-color: #e3f2fd !important; }
-  .footer-row { font-weight: bold !important; background-color: #bbdefb !important; }
   .negative { color: red !important; font-weight: bold; }
   @media print {
     body { zoom: 0.8; }
@@ -62,15 +60,6 @@ for col, editable, width, cls, bg, pin in cols_cfg:
         opts['pinned'] = pin
     gb.configure_column(col, **opts)
     
-# Add row styling for weekends
-def row_style(params):
-    if params.data['Day'] == 'Friday':
-        return {'backgroundColor': '#e8f5e9'}
-    if params.data['Day'] in ['Saturday', 'Sunday']:
-        return {'backgroundColor': '#ffebee'}
-    return None
-
-gb.configure_grid_options(rowStyle=row_style)
 grid_opts = gb.build()
 
 # Enforce column order
@@ -85,8 +74,7 @@ resp = AgGrid(
     update_mode=GridUpdateMode.MODEL_CHANGED,
     fit_columns_on_grid_load=True,
     height=500,
-    theme=theme,
-    allow_unsafe_jscode=True
+    theme=theme
 )
 edf = pd.DataFrame(resp['data']).reset_index(drop=True)[[c[0] for c in cols_cfg]]
 
@@ -117,11 +105,6 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         G_vals.append(prev_G - F_i + E_prev)
     df2['G (চাল ব্যবহার)'] = G_vals
     
-    # Add formatting for negative values
-    df2['G (চাল ব্যবহার)'] = df2['G (চাল ব্যবহার)'].apply(
-        lambda x: f"<span class='negative'>{x:.2f}</span>" if x < 0 else f"{x:.2f}"
-    )
-    
     # Weekly totals of G
     st.subheader("📅 Weekly Remaining G Totals")
     week_map = {
@@ -130,14 +113,11 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         'K (Wed/Sat)': ['Wednesday', 'Saturday']
     }
     
-    # Convert G to float for calculation
-    df2['G_float'] = pd.to_numeric(df2['G (চাল ব্যবহার)'].str.extract(r'([-]?\d+\.\d+)')[0], errors='coerce')
-    
     # Calculate totals and format
     totals = {}
     for label, days_list in week_map.items():
         days_df = df2[df2['Day'].isin(days_list)]
-        total = days_df['G_float'].sum()
+        total = days_df['G (চাল ব্যবহার)'].sum()
         totals[label] = total
         st.metric(label, f"{total:.2f}")
     
@@ -148,18 +128,16 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         'গ্রহণের পরিমাণ (D)': [df2['গ্রহণের পরিমাণ (D)'].sum()],
         'বাকিতে নেওয়া (E)': [df2['বাকিতে নেওয়া (E)'].sum()],
         'চাল প্রাপ্তি (F)': [df2['চাল প্রাপ্তি (F)'].sum()],
-        'G (চাল ব্যবহার)': [df2['G_float'].sum()],
-        'G_float': [df2['G_float'].sum()]
+        'G (চাল ব্যবহার)': [df2['G (চাল ব্যবহার)'].sum()]
     })
-    
-    # Format summary row
-    summary_row['G (চাল ব্যবহার)'] = summary_row['G (চাল ব্যবহার)'].apply(
-        lambda x: f"<span class='negative'>{x:.2f}</span>" if x < 0 else f"{x:.2f}"
-    )
     
     # Combine with main data
     df2 = pd.concat([df2, summary_row], ignore_index=True)
-    df2.drop(columns=['G_float'], inplace=True)
+    
+    # Format negative values in G column
+    df2['G (চাল ব্যবহার)'] = df2['G (চাল ব্যবহার)'].apply(
+        lambda x: f"<span style='color: red; font-weight: bold;'>{x:.2f}</span>" if x < 0 else f"{x:.2f}"
+    )
     
     # Display results table
     st.subheader("📊 Results Table")
@@ -174,11 +152,10 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
             cellStyle={'backgroundColor': bg}
         )
     
-    # Add styling for summary row
+    # Highlight totals row
     gb_results.configure_grid_options(
-        rowStyle=row_style,
         getRowStyle=lambda params: {'fontWeight': 'bold', 'backgroundColor': '#bbdefb'} 
-        if params.data['Day'] == 'TOTAL' else row_style(params)
+        if params.data['Day'] == 'TOTAL' else None
     )
     
     # Display the grid
@@ -188,8 +165,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
         fit_columns_on_grid_load=True,
         height=600,
         theme=theme,
-        allow_unsafe_html=True,
-        enable_enterprise_modules=False
+        allow_unsafe_html=True
     )
     
     # Add export options
