@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
-from calendar import monthrange
-import datetime
 
 # Page configuration
 theme = 'alpine'
@@ -20,26 +18,18 @@ st.markdown("""
   .header-red .ag-header-cell-label { background-color: #d32f2f !important; color: white; }
   .negative { color: red !important; font-weight: bold; }
   .total-row { background-color: #bbdefb !important; font-weight: bold; }
+  .ag-theme-alpine .ag-row-even { background-color: #f9f9f9; }
+  .ag-theme-alpine .ag-row-odd { background-color: white; }
 </style>
 """, unsafe_allow_html=True)
-
-# Month and year selection
-col1, col2 = st.columns(2)
-with col1:
-    month = st.selectbox("Select Month:", list(range(1, 13)), format_func=lambda x: datetime.date(2023, x, 1).strftime('%B'), index=7)  # August is index 7
-with col2:
-    year = st.selectbox("Select Year:", list(range(2020, 2031)), index=5)  # 2025 is index 5
-
-# Get number of days in selected month
-num_days = monthrange(year, month)[1]
 
 # Weekday selection
 weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 first_day = st.selectbox("Weekday of 1st of month:", weekdays, index=0)
 offset = weekdays.index(first_day)
 
-# Build template with correct number of days
-dates = list(range(1, num_days + 1))
+# Build template
+dates = list(range(1,32))
 days = [weekdays[(offset + d - 1) % 7] for d in dates]
 
 df = pd.DataFrame({
@@ -105,39 +95,50 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Calculate F column (চাল প্রাপ্তি)
     df2['চাল প্রাপ্তি (F)'] = df2['গ্রহণের পরিমাণ (D)'] * custom_rate
     
-    # Calculate G column (চাল ব্যবহার) using corrected logic
+    # Calculate G column (চাল ব্যবহার) using Excel logic
     g_vals = []
-    current_g = initial_g
     
-    for i in range(len(df2)):
-        # Subtract current day's F
-        current_g -= df2.at[i, 'চাল প্রাপ্তি (F)']
+    # For first day: G = Initial_G - F_current + E_previous
+    # Since there's no E_previous before first day, we use 0
+    first_g = initial_g - df2.iloc[0]['চাল প্রাপ্তি (F)'] 
+    g_vals.append(first_g)
+    
+    # For subsequent days: G_current = G_previous - F_current + E_previous
+    for i in range(1, len(df2)):
+        prev_g = g_vals[i-1]
+        current_f = df2.iloc[i]['চাল প্রাপ্তি (F)']
         
-        # Add previous day's E if available
-        if i > 0:
-            current_g += df2.at[i-1, 'বাকিতে নেওয়া (E)']
-            
+        # Use E value from previous day (i-1)
+        prev_e = df2.iloc[i-1]['বাকিতে নেওয়া (E)']
+        
+        current_g = prev_g - current_f + prev_e
         g_vals.append(current_g)
     
     df2['G (চাল ব্যবহার)'] = g_vals
     
-    # Weekly totals calculation
-    st.subheader("📅 Weekly Remaining G Totals")
-    week_map = {
-        'I (Mon/Thu)': ['Monday', 'Thursday'],
-        'J (Tue/Fri)': ['Tuesday', 'Friday'],
-        'K (Wed/Sat)': ['Wednesday', 'Saturday']
-    }
+    # Weekly totals calculation - EXACTLY as in Excel
+    st.subheader("📅 Weekly Totals (I, J, K Groups)")
     
-    # Calculate and display weekly sums
-    weekly_totals = {}
-    for label, days_list in week_map.items():
-        days_df = df2[df2['Day'].isin(days_list)]
-        total = days_df['G (চাল ব্যবহার)'].sum()
-        weekly_totals[label] = total
-        st.metric(label, f"{total:.2f}")
+    # Calculate weekly sums for D column (গ্রহণের পরিমাণ)
+    # Group I: Mon/Thu - Monday and Thursday
+    group_i_days = ['Monday', 'Thursday']
+    group_i_values = df2[df2['Day'].isin(group_i_days)]['গ্রহণের পরিমাণ (D)'].sum()
     
-    # Add summary row
+    # Group J: Tue/Fri - Tuesday and Friday
+    group_j_days = ['Tuesday', 'Friday']
+    group_j_values = df2[df2['Day'].isin(group_j_days)]['গ্রহণের পরিমাণ (D)'].sum()
+    
+    # Group K: Wed/Sat - Wednesday and Saturday
+    group_k_days = ['Wednesday', 'Saturday']
+    group_k_values = df2[df2['Day'].isin(group_k_days)]['গ্রহণের পরিমাণ (D)'].sum()
+    
+    # Display the weekly group totals
+    col1, col2, col3 = st.columns(3)
+    col1.metric("I (Mon/Thu)", f"{group_i_values:.2f} kg")
+    col2.metric("J (Tue/Fri)", f"{group_j_values:.2f} kg")
+    col3.metric("K (Wed/Sat)", f"{group_k_values:.2f} kg")
+    
+    # Add summary row for totals
     summary_row = pd.DataFrame({
         'Date': [''],
         'Day': ['TOTAL'],
@@ -150,7 +151,7 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     # Combine with main data
     df2 = pd.concat([df2, summary_row], ignore_index=True)
     
-    # Display results table using AgGrid
+    # Display results table
     st.subheader("📊 Results Table")
     
     # Configure results grid
@@ -171,11 +172,13 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
     
     cell_style_jscode = JsCode("""
         function(params) {
-            if (params.value < 0) {
-                return {
-                    'color': 'red',
-                    'fontWeight': 'bold'
-                };
+            if (params.colDef.field === 'G (চাল ব্যবহার)') {
+                if (params.value < 0) {
+                    return {
+                        'color': 'red',
+                        'fontWeight': 'bold'
+                    };
+                }
             }
             return null;
         };
@@ -193,7 +196,12 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
             opts['pinned'] = pin
         gb_results.configure_column(col, **opts)
     
-    gb_results.configure_grid_options(rowStyle=row_style_jscode)
+    gb_results.configure_grid_options(
+        rowStyle=row_style_jscode,
+        suppressRowClickSelection=True,
+        enableCellTextSelection=True,
+        ensureDomOrder=True
+    )
     grid_opts_results = gb_results.build()
     
     # Display the grid
@@ -222,25 +230,24 @@ if st.button("🚀 Calculate Rice Flow", use_container_width=True):
 with st.sidebar:
     st.header("Instructions")
     st.markdown("""
-    1. Select the **month and year**
-    2. Select the **first weekday** of the month
-    3. Enter values in:
+    1. Select the **first weekday** of the month
+    2. Enter values in:
        - **D (গ্রহণের পরিমাণ)**: Rice received
        - **E (বাকিতে নেওয়া)**: Rice taken on credit
-    4. Set the **Initial G** (balance before 1st day)
-    5. Click **Calculate Rice Flow**
+    3. Set the **Initial G** (balance before 1st day)
+    4. Click **Calculate Rice Flow**
     
     ### Calculation Formula
     - **F (চাল প্রাপ্তি)** = D × Rate
     - **G (চাল ব্যবহার)**:
       - Day 1: Initial_G - F₁
-      - Day n: Gₙ = Gₙ₋₁ - Fₙ + Eₙ₋₁
+      - Day n: Gₙ₋₁ - Fₙ + Eₙ₋₁
     
     ### Key Relationships
     - E values affect the NEXT day's G calculation
     - E from day (i) is used in day (i+1) calculation
     
-    ### Weekly Groups
+    ### Weekly Groups (D Column Sums)
     - **I**: Monday & Thursday
     - **J**: Tuesday & Friday
     - **K**: Wednesday & Saturday
@@ -249,7 +256,7 @@ with st.sidebar:
     st.info("""
     **Note**: 
     - Negative G values are shown in red indicating deficit
-    - 'Initial G' is the balance before the 1st day
+    - 'Initial G' is the balance before the 1st day (like Excel's G2)
     - E values from a day affect the next day's calculation
-    - The last day's E value is not used (no next day)
+    - Weekly totals show sum of D values for each group
     """)
