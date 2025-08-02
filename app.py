@@ -29,7 +29,10 @@ df = pd.DataFrame({
 
 # 2) Configure AgGrid
 gb = GridOptionsBuilder.from_dataframe(df)
-# Date column – read-only, light grey
+# Prevent adding or removing rows
+gb.configure_grid_options(suppressRowDrag=True, suppressRowGroup=True,
+                          suppressRowTransform=True, suppressRowClickSelection=True)
+# Date column – read-only, fixed 1–31, light grey
 gb.configure_column(
     "Date", editable=False, width=80,
     headerClass="header-dark",
@@ -78,13 +81,14 @@ initial_G = st.number_input(
 # 5) Compute button
 if st.button("Compute All G, I, J, K"):
     df2 = edited_df.copy()
+    # Enforce Date values 1–31
+    df2["Date"] = list(range(1, 32))
     # Fill blanks with zeros
     df2["গ্রহণের পরিমাণ (D)"].fillna(0, inplace=True)
     df2["বাকিতে নেওয়া (E)"].fillna(0, inplace=True)
 
     # Compute G: G[0]=initial_G; G[n]=G[n-1] - F[n] + E[n-1]
     G = [initial_G]
-    # If there's a column 'চাল প্রাপ্তি', use it; otherwise F=0
     F_col = df2.get("চাল প্রাপ্তি", pd.Series(0, index=df2.index))
     for i in range(1, len(df2)):
         prev = G[-1]
